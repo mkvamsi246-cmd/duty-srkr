@@ -101,7 +101,22 @@ async function startServer() {
         const schemaPath = path.join(__dirname, 'schema.sql');
         const sql = fs.readFileSync(schemaPath, 'utf8');
         await db.query(sql);
-        console.log('✔ Database schema verified and applied successfully.');
+
+        // Explicitly guarantee all faculty and migration columns exist on boot
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS serial_no INTEGER');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS shortcuts VARCHAR(200)');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50)');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50)');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+        await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS required_invigilators INTEGER');
+        await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS year_sem VARCHAR(10)');
+        await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+        await db.query('ALTER TABLE faculty_timetable ADD COLUMN IF NOT EXISTS year_sem VARCHAR(10)');
+        await db.query('ALTER TABLE classrooms ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+        await db.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+        await db.query('ALTER TABLE import_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+
+        console.log('✔ Database schema & column migrations verified successfully.');
 
         app.listen(PORT, () => {
             console.log(`Invigilation system running on http://localhost:${PORT}`);
