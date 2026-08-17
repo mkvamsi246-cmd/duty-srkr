@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://duty-backend.onrender.com/api/:path*"
+      "destination": "https://duty-srkr.onrender.com/api/:path*"
     }
   ]
 }
