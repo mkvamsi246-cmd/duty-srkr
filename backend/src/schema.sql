@@ -3,6 +3,24 @@
 -- PostgreSQL
 -- ============================================================
 
+-- Users table for department isolation
+CREATE TABLE IF NOT EXISTS users (
+    id              SERIAL PRIMARY KEY,
+    username        VARCHAR(50) UNIQUE NOT NULL,
+    password        VARCHAR(255) NOT NULL,
+    department_name VARCHAR(100),
+    created_at      TIMESTAMP NOT NULL DEFAULT now()
+);
+
+INSERT INTO users (username, password, department_name) VALUES
+    ('mech-srkr',  'mech@123',  'Mechanical Engineering'),
+    ('CSE-srkr',   'cse@123',   'Computer Science & Engineering'),
+    ('civil-srkr', 'civil@123', 'Civil Engineering'),
+    ('eee-srkr',   'eee@123',   'Electrical & Electronics Engineering'),
+    ('ece-srkr',   'ece@123',   'Electronics & Communication Engineering'),
+    ('it-srkr',    'it@123',    'Information Technology')
+ON CONFLICT (username) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS faculty (
     id              SERIAL PRIMARY KEY,
     name            VARCHAR(150) NOT NULL,
@@ -14,6 +32,7 @@ CREATE TABLE IF NOT EXISTS faculty (
     is_active       BOOLEAN NOT NULL DEFAULT true,
     duty_count      INTEGER NOT NULL DEFAULT 0,   -- running total, used for fairness
     priority        INTEGER NOT NULL DEFAULT 3,   -- lower number = assigned first (Prof=1,Assoc=2,Asst=3)
+    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
     updated_at      TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -29,15 +48,12 @@ CREATE TABLE IF NOT EXISTS faculty_unavailability (
 );
 
 -- Faculty's regular weekly teaching timetable (classes + labs).
--- Recurring by day-of-week, not tied to a specific date, since it repeats every week of the semester.
--- Used so invigilation duty is never assigned to a faculty member during a period
--- where they already have a class or lab scheduled.
 CREATE TABLE IF NOT EXISTS faculty_timetable (
     id              SERIAL PRIMARY KEY,
     faculty_id      INTEGER NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
     day_of_week     VARCHAR(3) NOT NULL CHECK (day_of_week IN ('Mon','Tue','Wed','Thu','Fri','Sat','Sun')),
     period          INTEGER NOT NULL CHECK (period BETWEEN 1 AND 12),
-    subject_code    VARCHAR(150),  -- e.g. "3-1-CN-CSE-B" or "2-1-DBMS LAB-CSE-D"
+    subject_code    VARCHAR(150),
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
     UNIQUE(faculty_id, day_of_week, period)
 );
@@ -48,6 +64,7 @@ CREATE TABLE IF NOT EXISTS classrooms (
     building        VARCHAR(100),
     capacity        INTEGER NOT NULL CHECK (capacity > 0),
     is_active       BOOLEAN NOT NULL DEFAULT true,
+    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
     updated_at      TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -59,6 +76,7 @@ CREATE TABLE IF NOT EXISTS exam_sessions (
     session         VARCHAR(10) NOT NULL DEFAULT 'FN', -- 'FN' / 'AN' / custom label
     start_time      TIME,
     end_time        TIME,
+    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
     UNIQUE(exam_name, exam_date, session)
 );
@@ -88,27 +106,34 @@ CREATE TABLE IF NOT EXISTS invigilation_duty (
 -- Simple key-value settings store (priority order, faculty-student ratio, etc.)
 CREATE TABLE IF NOT EXISTS settings (
     key         VARCHAR(50) PRIMARY KEY,
-    value       JSONB NOT NULL
+    value       JSONB NOT NULL,
+    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- session_periods maps an exam "session" label (FN/AN) to the timetable
--- periods it overlaps, so a faculty member with a class in any of those
--- periods on the matching weekday is excluded from that exam's duty pool.
 INSERT INTO settings (key, value) VALUES
     ('priority_order', '["assistant_professor","associate_professor","professor"]'),
     ('students_per_faculty', '24'),
     ('session_periods', '{"FN": [1,2,3,4], "AN": [5,6,7,8]}')
 ON CONFLICT (key) DO NOTHING;
 
--- Import batch log, for traceability of what was uploaded
+-- Import batch log
 CREATE TABLE IF NOT EXISTS import_log (
     id              SERIAL PRIMARY KEY,
     file_name       VARCHAR(255),
     import_type     VARCHAR(30), -- faculty / classrooms / exam_rooms / workload / timetable
     rows_imported   INTEGER,
     rows_skipped    INTEGER,
+    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
     uploaded_at     TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- Alter existing tables to add user_id column if upgrading existing database
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE classrooms ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE import_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS idx_duty_faculty ON invigilation_duty(faculty_id);
 CREATE INDEX IF NOT EXISTS idx_allocation_session ON exam_room_allocation(exam_session_id);

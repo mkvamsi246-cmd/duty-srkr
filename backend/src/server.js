@@ -98,17 +98,10 @@ const PORT = process.env.PORT || 4000;
 // Run database migrations on startup if not already initialized
 async function startServer() {
     try {
-        const tableCheck = await db.query(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'faculty')"
-        );
-        if (!tableCheck.rows[0].exists) {
-            const schemaPath = path.join(__dirname, 'schema.sql');
-            const sql = fs.readFileSync(schemaPath, 'utf8');
-            await db.query(sql);
-            console.log('✔ Database schema applied successfully.');
-        } else {
-            console.log('✔ Database schema verified (tables exist).');
-        }
+        const schemaPath = path.join(__dirname, 'schema.sql');
+        const sql = fs.readFileSync(schemaPath, 'utf8');
+        await db.query(sql);
+        console.log('✔ Database schema verified and applied successfully.');
 
         app.listen(PORT, () => {
             console.log(`Invigilation system running on http://localhost:${PORT}`);
