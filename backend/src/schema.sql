@@ -1,9 +1,9 @@
 -- ============================================================
--- Invigilation Duty Allocation System — Database Schema
+-- Invigilation Duty Allocation System — Complete Database Schema
 -- PostgreSQL
 -- ============================================================
 
--- Users table for department isolation
+-- 1. Users table for multi-tenant department isolation
 CREATE TABLE IF NOT EXISTS users (
     id              SERIAL PRIMARY KEY,
     username        VARCHAR(50) UNIQUE NOT NULL,
@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- Seed default department accounts
 INSERT INTO users (username, password, department_name) VALUES
     ('mech-srkr',  'mech@123',  'Mechanical Engineering'),
     ('CSE-srkr',   'cse@123',   'Computer Science & Engineering'),
@@ -21,6 +22,7 @@ INSERT INTO users (username, password, department_name) VALUES
     ('it-srkr',    'it@123',    'Information Technology')
 ON CONFLICT (username) DO NOTHING;
 
+-- 2. Faculty table
 CREATE TABLE IF NOT EXISTS faculty (
     id              SERIAL PRIMARY KEY,
     serial_no       INTEGER,
@@ -31,6 +33,8 @@ CREATE TABLE IF NOT EXISTS faculty (
     department      VARCHAR(100),
     email           VARCHAR(150),
     phone           VARCHAR(20),
+    contact         VARCHAR(50),
+    room_no         VARCHAR(50),
     is_active       BOOLEAN NOT NULL DEFAULT true,
     duty_count      INTEGER NOT NULL DEFAULT 0,   -- running total, used for fairness
     priority        INTEGER NOT NULL DEFAULT 3,   -- lower number = assigned first (Prof=1,Assoc=2,Asst=3)
@@ -39,6 +43,7 @@ CREATE TABLE IF NOT EXISTS faculty (
     updated_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- 3. Faculty unavailability overrides
 CREATE TABLE IF NOT EXISTS faculty_unavailability (
     id              SERIAL PRIMARY KEY,
     faculty_id      INTEGER NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
@@ -49,7 +54,7 @@ CREATE TABLE IF NOT EXISTS faculty_unavailability (
     UNIQUE(faculty_id, date, session)
 );
 
--- Faculty's regular weekly teaching timetable (classes + labs).
+-- 4. Faculty weekly teaching timetable
 CREATE TABLE IF NOT EXISTS faculty_timetable (
     id              SERIAL PRIMARY KEY,
     faculty_id      INTEGER NOT NULL REFERENCES faculty(id) ON DELETE CASCADE,
@@ -61,6 +66,7 @@ CREATE TABLE IF NOT EXISTS faculty_timetable (
     UNIQUE(faculty_id, day_of_week, period)
 );
 
+-- 5. Classrooms table
 CREATE TABLE IF NOT EXISTS classrooms (
     id              SERIAL PRIMARY KEY,
     room_no         VARCHAR(50) NOT NULL UNIQUE,
@@ -72,6 +78,7 @@ CREATE TABLE IF NOT EXISTS classrooms (
     updated_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- 6. Exam sessions table
 CREATE TABLE IF NOT EXISTS exam_sessions (
     id                      SERIAL PRIMARY KEY,
     exam_name               VARCHAR(150) NOT NULL,
@@ -86,7 +93,7 @@ CREATE TABLE IF NOT EXISTS exam_sessions (
     UNIQUE(exam_name, exam_date, session)
 );
 
--- Which rooms are used for a given exam session, and how many students sit in each
+-- 7. Exam room allocations
 CREATE TABLE IF NOT EXISTS exam_room_allocation (
     id                  SERIAL PRIMARY KEY,
     exam_session_id     INTEGER NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
@@ -97,7 +104,7 @@ CREATE TABLE IF NOT EXISTS exam_room_allocation (
     UNIQUE(exam_session_id, classroom_id)
 );
 
--- The actual generated/assigned duties
+-- 8. Invigilation duties (room-based)
 CREATE TABLE IF NOT EXISTS invigilation_duty (
     id                          SERIAL PRIMARY KEY,
     exam_room_allocation_id     INTEGER NOT NULL REFERENCES exam_room_allocation(id) ON DELETE CASCADE,
@@ -108,7 +115,7 @@ CREATE TABLE IF NOT EXISTS invigilation_duty (
     UNIQUE(exam_room_allocation_id, faculty_id)
 );
 
--- Stores invigilator assignments at the session level (no room dependency)
+-- 9. Session duties (session-level / room-free)
 CREATE TABLE IF NOT EXISTS session_duty (
     id              SERIAL PRIMARY KEY,
     exam_session_id INTEGER NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
@@ -120,7 +127,7 @@ CREATE TABLE IF NOT EXISTS session_duty (
     UNIQUE(exam_session_id, faculty_id)
 );
 
--- Simple key-value settings store
+-- 10. Settings key-value store
 CREATE TABLE IF NOT EXISTS settings (
     key         VARCHAR(50) PRIMARY KEY,
     value       JSONB NOT NULL,
@@ -133,7 +140,7 @@ INSERT INTO settings (key, value) VALUES
     ('session_periods', '{"FN": [1,2,3,4], "AN": [5,6,7,8]}')
 ON CONFLICT (key) DO NOTHING;
 
--- Import batch log
+-- 11. Import batch log
 CREATE TABLE IF NOT EXISTS import_log (
     id              SERIAL PRIMARY KEY,
     file_name       VARCHAR(255),
@@ -144,9 +151,11 @@ CREATE TABLE IF NOT EXISTS import_log (
     uploaded_at     TIMESTAMP NOT NULL DEFAULT now()
 );
 
--- Alter existing tables to add columns if upgrading existing database
+-- 12. Idempotent ALTER TABLE statements to upgrade pre-existing database instances safely
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS serial_no INTEGER;
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS shortcuts VARCHAR(200);
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50);
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50);
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
 ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS required_invigilators INTEGER;
@@ -160,6 +169,7 @@ ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(i
 ALTER TABLE import_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE session_duty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
+-- 13. Indexes for fast lookup and query optimization
 CREATE UNIQUE INDEX IF NOT EXISTS idx_faculty_serial_no ON faculty(serial_no) WHERE serial_no IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_timetable_year_sem ON faculty_timetable(year_sem);
 CREATE INDEX IF NOT EXISTS idx_session_duty_session ON session_duty(exam_session_id);
@@ -170,7 +180,7 @@ CREATE INDEX IF NOT EXISTS idx_allocation_session ON exam_room_allocation(exam_s
 CREATE INDEX IF NOT EXISTS idx_unavail_faculty_date ON faculty_unavailability(faculty_id, date);
 CREATE INDEX IF NOT EXISTS idx_timetable_faculty_day ON faculty_timetable(faculty_id, day_of_week);
 
--- Session table for connect-pg-simple to store session data in production
+-- 14. Session storage table for express-session (connect-pg-simple)
 CREATE TABLE IF NOT EXISTS session (
     sid         VARCHAR PRIMARY KEY NOT DEFERRABLE INITIALLY IMMEDIATE,
     sess        JSONB NOT NULL,
