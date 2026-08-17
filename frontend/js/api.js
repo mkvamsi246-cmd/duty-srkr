@@ -6,7 +6,9 @@ const isLocal = isFileProtocol
     || /^10\./.test(window.location.hostname);
 
 const targetHost = (isFileProtocol || !window.location.hostname) ? 'localhost' : window.location.hostname;
-const API_BASE = (isFileProtocol || (isLocal && window.location.port !== '4000'))
+const API_BASE = (window.BACKEND_URL)
+    ? (window.BACKEND_URL.endsWith('/api') ? window.BACKEND_URL : `${window.BACKEND_URL.replace(/\/$/, '')}/api`)
+    : (isFileProtocol || (isLocal && window.location.port !== '4000'))
     ? `http://${targetHost}:4000/api`
     : '/api';
 
