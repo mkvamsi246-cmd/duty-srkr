@@ -6,18 +6,27 @@ types.setTypeParser(1082, val => val);
 
 const isProd = process.env.NODE_ENV === 'production';
 
+if (isProd && !process.env.DATABASE_URL && !process.env.PGHOST) {
+    console.warn('⚠️ WARNING: Neither DATABASE_URL nor PGHOST environment variable is defined! The server will attempt connecting to localhost:5432.');
+}
+
 const poolConfig = {
     ...(process.env.DATABASE_URL
         ? {
             connectionString: process.env.DATABASE_URL,
-            ssl: isProd ? { rejectUnauthorized: false } : false,
+            ssl: (process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1'))
+                ? false
+                : (isProd ? { rejectUnauthorized: false } : false),
           }
         : {
-            host: process.env.PGHOST,
-            port: process.env.PGPORT,
+            host: process.env.PGHOST || '127.0.0.1',
+            port: process.env.PGPORT || 5432,
             database: process.env.PGDATABASE,
             user: process.env.PGUSER,
             password: process.env.PGPASSWORD,
+            ssl: isProd && process.env.PGHOST && !process.env.PGHOST.includes('localhost') && !process.env.PGHOST.includes('127.0.0.1')
+                ? { rejectUnauthorized: false }
+                : false,
           }),
     max: 10,
     idleTimeoutMillis: 30000,
