@@ -69,10 +69,18 @@ async function getPrevDayAssignedIds(examDate) {
     const prevDt = new Date(Date.UTC(y, m - 1, d - 1));
     const prevDateStr = prevDt.toISOString().slice(0, 10);
     const { rows } = await db.query(
-        `SELECT DISTINCT sd.faculty_id
-         FROM session_duty sd
-         JOIN exam_sessions es ON es.id = sd.exam_session_id
-         WHERE es.exam_date = $1`,
+        `SELECT DISTINCT faculty_id FROM (
+             SELECT sd.faculty_id
+             FROM session_duty sd
+             JOIN exam_sessions es ON es.id = sd.exam_session_id
+             WHERE es.exam_date = $1
+             UNION
+             SELECT idu.faculty_id
+             FROM invigilation_duty idu
+             JOIN exam_room_allocation era ON era.id = idu.exam_room_allocation_id
+             JOIN exam_sessions es ON es.id = era.exam_session_id
+             WHERE es.exam_date = $1
+         ) prev_duties`,
         [prevDateStr]
     );
     return new Set(rows.map(r => r.faculty_id));
@@ -88,8 +96,7 @@ async function getPrevDayAssignedIds(examDate) {
  * Ordering:
  *   - Primary: serial_no DESC NULLS LAST (highest S.No picked first)
  *   - Tiebreak: name ASC
- *   - Consecutive-day rule: faculty who had a duty yesterday are appended
- *     after the rest, only used when no other eligible person is available.
+ *   - Consecutive-day rule: HARD EXCLUSION for faculty who had duty on previous day.
  */
 async function getEligibleFacultyPool(examDate, session, sessionPeriods) {
     const dayAbbrev       = dayOfWeekAbbrev(examDate);
@@ -140,12 +147,13 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods) {
         }
     }
 
-    // Layer 3: consecutive-day rule — push yesterday's invigilators to the back.
+    // Layer 3: consecutive-day rule — EXCLUDE faculty assigned on the previous calendar day
     const prevDayIds = await getPrevDayAssignedIds(examDate);
     if (prevDayIds.size > 0) {
         const noPrevDuty  = eligible.filter(f => !prevDayIds.has(f.id));
-        const hadPrevDuty = eligible.filter(f =>  prevDayIds.has(f.id));
-        eligible = [...noPrevDuty, ...hadPrevDuty];
+        if (noPrevDuty.length > 0) {
+            eligible = noPrevDuty;
+        }
     }
 
     return eligible;
