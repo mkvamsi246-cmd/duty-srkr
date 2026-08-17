@@ -6,7 +6,9 @@ types.setTypeParser(1082, val => val);
 
 const isProd = process.env.NODE_ENV === 'production';
 
-if (isProd && !process.env.DATABASE_URL && !process.env.PGHOST) {
+const databaseUrl = process.env.DATABASE_URL || process.env.DATABASE_URl;
+
+if (isProd && !databaseUrl && !process.env.PGHOST) {
     const envKeys = Object.keys(process.env).filter(k => !k.startsWith('npm_') && !k.startsWith('NODE_'));
     console.warn('⚠️ WARNING: Neither DATABASE_URL nor PGHOST environment variable is defined!');
     console.warn('Available env variables in process.env:', envKeys.join(', '));
@@ -14,10 +16,10 @@ if (isProd && !process.env.DATABASE_URL && !process.env.PGHOST) {
 }
 
 const poolConfig = {
-    ...(process.env.DATABASE_URL
+    ...(databaseUrl
         ? {
-            connectionString: process.env.DATABASE_URL,
-            ssl: (process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1'))
+            connectionString: databaseUrl,
+            ssl: (databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1'))
                 ? false
                 : (isProd ? { rejectUnauthorized: false } : false),
           }
