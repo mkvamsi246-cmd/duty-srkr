@@ -7,7 +7,10 @@ types.setTypeParser(1082, val => val);
 const isProd = process.env.NODE_ENV === 'production';
 
 if (isProd && !process.env.DATABASE_URL && !process.env.PGHOST) {
-    console.warn('⚠️ WARNING: Neither DATABASE_URL nor PGHOST environment variable is defined! The server will attempt connecting to localhost:5432.');
+    const envKeys = Object.keys(process.env).filter(k => !k.startsWith('npm_') && !k.startsWith('NODE_'));
+    console.warn('⚠️ WARNING: Neither DATABASE_URL nor PGHOST environment variable is defined!');
+    console.warn('Available env variables in process.env:', envKeys.join(', '));
+    console.warn('The server will attempt connecting to localhost:5432.');
 }
 
 const poolConfig = {
