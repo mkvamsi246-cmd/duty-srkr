@@ -90,6 +90,54 @@ function getSessionLetter(yearSemStr, sessionStr) {
     }
 }
 
+function formatTimeString(tStr) {
+    if (!tStr) return '';
+    let str = String(tStr).trim();
+    if (!str) return '';
+    const match = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (match) {
+        let h = parseInt(match[1], 10);
+        let m = parseInt(match[2], 10);
+        let ampm = h >= 12 ? 'PM' : 'AM';
+        let h12 = h % 12 || 12;
+        let hh = String(h12).padStart(2, '0');
+        let mm = String(m).padStart(2, '0');
+        return `${hh}:${mm} ${ampm}`;
+    }
+    return str;
+}
+
+function resolveSessionTimings(s, globalExamName) {
+    let startTime = formatTimeString(s.start_time);
+    let endTime   = formatTimeString(s.end_time);
+
+    if (startTime && endTime) {
+        return { startTime, endTime };
+    }
+
+    const exName = String(s.exam_name || globalExamName || '').toUpperCase();
+    const isMid  = exName.includes('MID');
+    const isAN   = String(s.session || '').toUpperCase() === 'AN';
+
+    if (!startTime) {
+        if (isMid) {
+            startTime = isAN ? '02:30 PM' : '10:00 AM';
+        } else {
+            startTime = isAN ? '01:30 PM' : '09:00 AM';
+        }
+    }
+
+    if (!endTime) {
+        if (isMid) {
+            endTime = isAN ? '04:20 PM' : '12:00 PM';
+        } else {
+            endTime = isAN ? '04:30 PM' : '12:00 PM';
+        }
+    }
+
+    return { startTime, endTime };
+}
+
 async function buildSheetData(examName, yearSem, userId, course, startDate, endDate) {
     let sql = `SELECT id, exam_name, course, exam_date, session, year_sem, required_invigilators, start_time, end_time
                FROM exam_sessions WHERE user_id = $1`;
@@ -132,8 +180,7 @@ async function buildSheetData(examName, yearSem, userId, course, startDate, endD
     sessionCols = sessions.map((s, i) => {
         const ys = s.year_sem || yearSem || '1-1';
         const c  = s.course || 'B.Tech';
-        const startTime = s.start_time || (s.session === 'AN' ? '01:30 PM' : '09:30 AM');
-        const endTime   = s.end_time   || (s.session === 'AN' ? '03:30 PM' : '11:30 AM');
+        const { startTime, endTime } = resolveSessionTimings(s, examName);
         const key = `${s.exam_name}|||${c}|||${ys}|||${startTime}|||${endTime}`;
         const letter = getSessionLetter(ys, s.session);
 
