@@ -129,7 +129,7 @@ function resolveSessionTimings(s, globalExamName) {
 
     if (!endTime) {
         if (isMid) {
-            endTime = isAN ? '04:20 PM' : '12:00 PM';
+            endTime = isAN ? '04:20 PM' : '11:50 AM';
         } else {
             endTime = isAN ? '04:30 PM' : '12:00 PM';
         }
