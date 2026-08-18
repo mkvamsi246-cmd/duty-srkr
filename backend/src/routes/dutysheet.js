@@ -41,21 +41,27 @@ router.get('/list-exams', async (req, res) => {
     }
 });
 
-function formatYearSemLabel(yearSemStr, examName, course) {
+function formatYearSemLabel(yearSemStr, examName, course, sessionExamName) {
+    const targetExam = (examName && String(examName).toUpperCase() !== 'ALL')
+        ? examName
+        : (sessionExamName || 'Exams');
+
     let courseLabel = course ? String(course).trim().toUpperCase().replace(/\./g, '') : 'BTECH';
     if (!courseLabel || courseLabel === 'NULL') courseLabel = 'BTECH';
 
-    if (!yearSemStr) return `${courseLabel} ${examName} Exams`;
+    const examSuffix = String(targetExam).toLowerCase().includes('exam') ? targetExam : `${targetExam} Exams`;
+
+    if (!yearSemStr) return `${courseLabel} ${examSuffix}`;
     const str = String(yearSemStr).trim();
     const romanYears = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' };
     const parts = str.split('-');
     if (parts.length === 2 && romanYears[parts[0]]) {
-        return `${romanYears[parts[0]]} ${courseLabel} SEM-${parts[1]} ${examName} Exams`;
+        return `${romanYears[parts[0]]} ${courseLabel} SEM-${parts[1]} ${examSuffix}`;
     }
     if (/sem|btech|bba|mtech/i.test(str)) {
-        return `${str} ${examName} Exams`;
+        return `${str} ${examSuffix}`;
     }
-    return `${courseLabel} ${str} ${examName} Exams`;
+    return `${courseLabel} ${str} ${examSuffix}`;
 }
 
 function getSessionLetter(yearSemStr, sessionStr) {
@@ -75,8 +81,13 @@ function getSessionLetter(yearSemStr, sessionStr) {
 
 async function buildSheetData(examName, yearSem, userId, course) {
     let sql = `SELECT id, exam_name, course, exam_date, session, year_sem, required_invigilators
-               FROM exam_sessions WHERE exam_name = $1 AND user_id = $2`;
-    const params = [examName, userId];
+               FROM exam_sessions WHERE user_id = $1`;
+    const params = [userId];
+
+    if (examName && String(examName).toUpperCase() !== 'ALL') {
+        params.push(examName);
+        sql += ` AND exam_name = $${params.length}`;
+    }
     if (yearSem) {
         params.push(yearSem);
         sql += ` AND year_sem = $${params.length}`;
@@ -99,16 +110,18 @@ async function buildSheetData(examName, yearSem, userId, course) {
     sessionCols = sessions.map((s, i) => {
         const ys = s.year_sem || yearSem || '1-1';
         const c  = s.course || 'B.Tech';
-        const key = `${c}|||${ys}`;
+        const key = `${s.exam_name}|||${c}|||${ys}`;
         const letter = getSessionLetter(ys, s.session);
 
-        if (!courseYearSemMap.has(key)) courseYearSemMap.set(key, { course: c, yearSem: ys, letters: new Set() });
+        if (!courseYearSemMap.has(key)) {
+            courseYearSemMap.set(key, { examName: s.exam_name, course: c, yearSem: ys, letters: new Set() });
+        }
         courseYearSemMap.get(key).letters.add(letter);
 
         return {
             id: i, sessionId: s.id,
             date: toYYYYMMDD(s.exam_date), day: dayAbbr(toYYYYMMDD(s.exam_date)),
-            session: s.session, yearSem: ys, course: c,
+            session: s.session, yearSem: ys, course: c, examName: s.exam_name,
             letter: letter,
             requiredInvigilators: s.required_invigilators || 0,
         };
@@ -119,7 +132,7 @@ async function buildSheetData(examName, yearSem, userId, course) {
         const letterKey = lettersArr.join('&');
         legendList.push({
             letterKey,
-            description: formatYearSemLabel(item.yearSem, examName, item.course),
+            description: formatYearSemLabel(item.yearSem, examName, item.course, item.examName),
         });
     }
 

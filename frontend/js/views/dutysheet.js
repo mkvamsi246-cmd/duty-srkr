@@ -28,6 +28,7 @@ async function renderDutySheet(container) {
                     <label class="field-label">Select Exam Name</label>
                     <select class="input" id="duty-sheet-exam-select">
                         <option value="">-- Select Exam --</option>
+                        <option value="ALL">-- All Exams --</option>
                         ${examNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}
                     </select>
                 </div>

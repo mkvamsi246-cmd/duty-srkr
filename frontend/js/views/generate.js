@@ -33,6 +33,7 @@ async function renderGenerate(container) {
                     <label class="field-label">Exam</label>
                     <select class="input" id="exam-group-select">
                         <option value="">- select exam -</option>
+                        <option value="ALL">-- All Exams --</option>
                         ${groups.map((g, i) => `
                             <option value="${i}">
                                 ${escapeHtml(g.examName)} - ${escapeHtml(g.examDate)}
@@ -117,6 +118,22 @@ async function renderGenerate(container) {
             currentGroupIdx = null;
             return;
         }
+
+        if (idx === 'ALL') {
+            currentGroupIdx = 'ALL';
+            const allSessionIds = groups.flatMap(g => g.sessions.map(s => s.id));
+            chkFN.disabled = false;
+            chkAN.disabled = false;
+            chkFN.checked = true;
+            chkAN.checked = true;
+            riInputFN.value = '';
+            riInputAN.value = '';
+            sessionChecks.style.display = 'block';
+            updateVisibilityAndBtn();
+            loadSavedDutyChart(allSessionIds);
+            return;
+        }
+
         currentGroupIdx = parseInt(idx, 10);
         const group = groups[currentGroupIdx];
 
@@ -149,6 +166,20 @@ async function renderGenerate(container) {
 
     function getSelectedSessionIds() {
         if (currentGroupIdx === null) return [];
+        if (currentGroupIdx === 'ALL') {
+            const selected = [];
+            groups.forEach(g => {
+                if (chkFN.checked) {
+                    const s = g.sessions.find(s => s.session === 'FN');
+                    if (s) selected.push(s.id);
+                }
+                if (chkAN.checked) {
+                    const s = g.sessions.find(s => s.session === 'AN');
+                    if (s) selected.push(s.id);
+                }
+            });
+            return selected;
+        }
         const group = groups[currentGroupIdx];
         const selected = [];
         if (chkFN.checked) {
@@ -164,18 +195,26 @@ async function renderGenerate(container) {
 
     function getSessionCountsPayload() {
         if (currentGroupIdx === null) return {};
-        const group = groups[currentGroupIdx];
         const counts = {};
-        if (chkFN.checked) {
-            const s = group.sessions.find(s => s.session === 'FN');
-            const val = riInputFN.value.trim();
-            if (s && val) counts[s.id] = parseInt(val, 10);
-        }
-        if (chkAN.checked) {
-            const s = group.sessions.find(s => s.session === 'AN');
-            const val = riInputAN.value.trim();
-            if (s && val) counts[s.id] = parseInt(val, 10);
-        }
+        const targetGroups = (currentGroupIdx === 'ALL') ? groups : [groups[currentGroupIdx]];
+        targetGroups.forEach(g => {
+            if (chkFN.checked) {
+                const s = g.sessions.find(s => s.session === 'FN');
+                const val = riInputFN.value.trim();
+                if (s) {
+                    if (val) counts[s.id] = parseInt(val, 10);
+                    else if (s.requiredInvigilators) counts[s.id] = s.requiredInvigilators;
+                }
+            }
+            if (chkAN.checked) {
+                const s = g.sessions.find(s => s.session === 'AN');
+                const val = riInputAN.value.trim();
+                if (s) {
+                    if (val) counts[s.id] = parseInt(val, 10);
+                    else if (s.requiredInvigilators) counts[s.id] = s.requiredInvigilators;
+                }
+            }
+        });
         return counts;
     }
 
