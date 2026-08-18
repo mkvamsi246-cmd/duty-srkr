@@ -23,6 +23,15 @@ async function renderExams(container) {
                         <option value="Sem-2">Sem-2</option>
                     </select>
                 </div>
+                <div class="field" style="max-width:130px;">
+                    <label class="field-label">Course <span style="font-size:10px;color:#dc2626;">*</span></label>
+                    <select class="input" name="course" required>
+                        <option value="">- select course -</option>
+                        <option value="B.Tech">B.Tech</option>
+                        <option value="M.Tech">M.Tech</option>
+                        <option value="B.B.A">B.B.A</option>
+                    </select>
+                </div>
                 <div class="field"><label class="field-label">Date</label><input class="input" name="exam_date" type="date" required></div>
                 <div class="field">
                     <label class="field-label">Session</label>
@@ -70,6 +79,7 @@ async function renderExams(container) {
                     <thead>
                         <tr>
                             <th>Exam</th>
+                            <th>Course</th>
                             <th>Date</th>
                             <th>Session</th>
                             <th>Year/Sem</th>
@@ -89,6 +99,11 @@ async function renderExams(container) {
                             return `
                             <tr>
                                 <td>${escapeHtml(g.examName)}</td>
+                                <td>
+                                    ${g.course
+                                        ? `<span style="background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(g.course)}</span>`
+                                        : '<span style="color:var(--gray-400);font-size:11px;">-</span>'}
+                                </td>
                                 <td>${escapeHtml(String(g.examDate).slice(0,10))}</td>
                                 <td><span style="font-weight:600;">${escapeHtml(sessionText)}</span></td>
                                 <td>
@@ -96,10 +111,13 @@ async function renderExams(container) {
                                         ? `<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(g.yearSem)}</span>`
                                         : '<span style="color:var(--gray-400);font-size:11px;">-</span>'}
                                 </td>
-                                <td style="text-align:center;font-size:13px;">
-                                    ${firstSess.requiredInvigilators != null
-                                        ? `<span style="font-weight:600;">${firstSess.requiredInvigilators}</span> <span style="color:var(--gray-500);font-size:11px;">(manual)</span>`
-                                        : '<span style="color:var(--gray-400);font-size:11px;">auto</span>'}
+                                <td style="text-align:center;font-size:12px;">
+                                    ${g.sessions.map(s => {
+                                        const label = s.session;
+                                        return s.requiredInvigilators != null
+                                            ? `<span style="font-weight:700;color:#1e293b;">${label}: ${s.requiredInvigilators}</span>`
+                                            : `<span style="color:var(--gray-400);">${label}: auto</span>`;
+                                    }).join('<span style="color:var(--gray-300);margin:0 4px;">|</span>')}
                                 </td>
                                 <td style="font-size:12px;color:var(--gray-500);">
                                     ${firstSess.startTime ? `${firstSess.startTime}` : '-'}
@@ -121,6 +139,10 @@ async function renderExams(container) {
         e.preventDefault();
         const fd = new FormData(e.target);
         const data = Object.fromEntries(fd);
+        if (!data.course) {
+            showToast('Please select a Course before adding an exam session.', true);
+            return;
+        }
         if (!data.start_time) delete data.start_time;
         if (!data.end_time)   delete data.end_time;
 

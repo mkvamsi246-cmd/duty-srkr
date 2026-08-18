@@ -108,6 +108,7 @@ async function startServer() {
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50)');
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50)');
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+        await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS course VARCHAR(50)');
         await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS required_invigilators INTEGER');
         await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS year_sem VARCHAR(10)');
         await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
@@ -115,6 +116,23 @@ async function startServer() {
         await db.query('ALTER TABLE classrooms ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
         await db.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
         await db.query('ALTER TABLE import_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
+
+        // Drop old restrictive unique constraint and add course + year_sem aware unique constraint
+        await db.query(`
+            DO $$ 
+            BEGIN 
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'exam_sessions_exam_name_exam_date_session_key'
+                ) THEN 
+                    ALTER TABLE exam_sessions DROP CONSTRAINT exam_sessions_exam_name_exam_date_session_key;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'exam_sessions_unique_session_key'
+                ) THEN 
+                    ALTER TABLE exam_sessions ADD CONSTRAINT exam_sessions_unique_session_key UNIQUE(user_id, exam_name, course, exam_date, session, year_sem);
+                END IF;
+            END $$;
+        `);
 
         console.log('✔ Database schema & column migrations verified successfully.');
 

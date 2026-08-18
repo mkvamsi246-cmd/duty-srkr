@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS classrooms (
 CREATE TABLE IF NOT EXISTS exam_sessions (
     id                      SERIAL PRIMARY KEY,
     exam_name               VARCHAR(150) NOT NULL,
+    course                  VARCHAR(50),
     exam_date               DATE NOT NULL,
     session                 VARCHAR(10) NOT NULL DEFAULT 'FN', -- 'FN' / 'AN' / custom label
     start_time              TIME,
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS exam_sessions (
     year_sem                VARCHAR(10),
     user_id                 INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at              TIMESTAMP NOT NULL DEFAULT now(),
-    UNIQUE(exam_name, exam_date, session)
+    CONSTRAINT exam_sessions_unique_session_key UNIQUE(user_id, exam_name, course, exam_date, session, year_sem)
 );
 
 -- 7. Exam room allocations
@@ -158,6 +159,7 @@ ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50);
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50);
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
+ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS course VARCHAR(50);
 ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS required_invigilators INTEGER;
 ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS year_sem VARCHAR(10);
 ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;

@@ -31,6 +31,15 @@ async function renderDutySheet(container) {
                         ${examNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}
                     </select>
                 </div>
+                <div class="field" style="min-width:130px;">
+                    <label class="field-label">Course <span style="font-size:11px;color:var(--gray-500);">(optional)</span></label>
+                    <select class="input" id="duty-sheet-course-select">
+                        <option value="">-- All Courses --</option>
+                        <option value="B.Tech">B.Tech</option>
+                        <option value="M.Tech">M.Tech</option>
+                        <option value="B.B.A">B.B.A</option>
+                    </select>
+                </div>
                 <div class="field" style="min-width:140px;">
                     <label class="field-label">Year / Sem <span style="font-size:11px;color:var(--gray-500);">(optional)</span></label>
                     <select class="input" id="duty-sheet-yearsem-select">
@@ -54,6 +63,7 @@ async function renderDutySheet(container) {
     `;
 
     const selectEl = document.getElementById('duty-sheet-exam-select');
+    const courseEl = document.getElementById('duty-sheet-course-select');
     const yearSemEl = document.getElementById('duty-sheet-yearsem-select');
     const previewBtn = document.getElementById('duty-sheet-preview-btn');
     const finalizeBtn = document.getElementById('duty-sheet-finalize-btn');
@@ -67,23 +77,26 @@ async function renderDutySheet(container) {
     previewBtn.addEventListener('click', async () => {
         const examName = selectEl.value;
         const yearSem = yearSemEl.value;
+        const course = courseEl.value;
         if (!examName) {
             showToast('Please select an exam name first', true);
             return;
         }
-        await loadPreview(examName, yearSem);
+        await loadPreview(examName, yearSem, course);
     });
 
     finalizeBtn.addEventListener('click', async () => {
         const examName = selectEl.value;
         const yearSem = yearSemEl.value;
+        const course = courseEl.value;
         if (!examName) return;
         try {
             showToast('Generating Duty Sheet Excel file...');
             let path = `/duty-sheet/export?examName=${encodeURIComponent(examName)}`;
             if (yearSem) path += `&yearSem=${encodeURIComponent(yearSem)}`;
+            if (course)  path += `&course=${encodeURIComponent(course)}`;
             const safeName = examName.replace(/[^a-zA-Z0-9\-_]/g, '_');
-            const filename = `Duty_Sheet_${safeName}${yearSem ? '_' + yearSem : ''}.xlsx`;
+            const filename = `Duty_Sheet_${safeName}${course ? '_' + course : ''}${yearSem ? '_' + yearSem : ''}.xlsx`;
             await api.download(path, filename);
             showToast('Duty Sheet downloaded successfully!');
         } catch (err) {
@@ -91,11 +104,12 @@ async function renderDutySheet(container) {
         }
     });
 
-    async function loadPreview(examName, yearSem) {
+    async function loadPreview(examName, yearSem, course) {
         previewArea.innerHTML = '<p class="empty-state">Generating draft preview...</p>';
         try {
             let previewUrl = `/duty-sheet/preview?examName=${encodeURIComponent(examName)}`;
             if (yearSem) previewUrl += `&yearSem=${encodeURIComponent(yearSem)}`;
+            if (course)  previewUrl += `&course=${encodeURIComponent(course)}`;
             const data = await api.get(previewUrl);
             renderPreviewTable(data);
             finalizeBtn.disabled = false;
@@ -111,14 +125,14 @@ async function renderDutySheet(container) {
         if (!sessionCols || sessionCols.length === 0) {
             previewArea.innerHTML = `
                 <div class="panel">
-                    <p class="empty-state">No exam sessions found for exam "${escapeHtml(data.examName)}"${data.yearSem ? ` (${escapeHtml(data.yearSem)})` : ''}.</p>
+                    <p class="empty-state">No exam sessions found for exam "${escapeHtml(data.examName)}"${data.course ? ` (${escapeHtml(data.course)})` : ''}${data.yearSem ? ` (${escapeHtml(data.yearSem)})` : ''}.</p>
                 </div>`;
             return;
         }
 
         const sessHeaders1 = sessionCols.map(s => `<th style="background:#1f3864;color:#fff;text-align:center;font-size:11px;padding:4px 6px;">${escapeHtml(s.date)}</th>`).join('');
         const sessHeaders2 = sessionCols.map(s => `<th style="background:#1f3864;color:#fff;text-align:center;font-size:11px;padding:4px 6px;">${escapeHtml(s.day)}</th>`).join('');
-        const sessHeaders3 = sessionCols.map(s => `<th style="background:#1f3864;color:#fff;text-align:center;font-size:11px;padding:4px 6px;">${escapeHtml(s.yearSem || 'CSE')}</th>`).join('');
+        const sessHeaders3 = sessionCols.map(s => `<th style="background:#1f3864;color:#fff;text-align:center;font-size:11px;padding:4px 6px;">${escapeHtml((s.course ? s.course + ' ' : '') + (s.yearSem || 'CSE'))}</th>`).join('');
         const sessHeaders4 = sessionCols.map(s => `<th style="background:#1f3864;color:#fff;text-align:center;font-size:11px;padding:4px 6px;">${escapeHtml(s.letter)}</th>`).join('');
 
         const rowsHtml = facultyRows.map((fr, idx) => {

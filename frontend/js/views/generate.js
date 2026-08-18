@@ -29,21 +29,21 @@ async function renderGenerate(container) {
                 : `
             <div class="row" style="align-items:flex-end;gap:16px;flex-wrap:wrap;">
 
-                <!-- Exam picker -->
-                <div class="field" style="min-width:280px;">
+                <!-- Exam picker -->                <div class="field" style="min-width:280px;">
                     <label class="field-label">Exam</label>
                     <select class="input" id="exam-group-select">
                         <option value="">- select exam -</option>
                         ${groups.map((g, i) => `
                             <option value="${i}">
                                 ${escapeHtml(g.examName)} - ${escapeHtml(g.examDate)}
+                                ${g.course ? '[' + escapeHtml(g.course) + ']' : ''}
                                 ${g.yearSem ? '[' + escapeHtml(g.yearSem) + ']' : ''}
                             </option>
                         `).join('')}
                     </select>
                 </div>
 
-                <!-- Session checkboxes -->
+                <!-- Session checkboxes and counts -->
                 <div id="session-checks" style="display:none;">
                     <label class="field-label">Session(s)</label>
                     <div style="display:flex;gap:14px;margin-top:4px;">
@@ -58,13 +58,14 @@ async function renderGenerate(container) {
                     </div>
                 </div>
 
-                <!-- Invigilators count -->
-                <div class="field" style="max-width:175px;" id="count-field">
-                    <label class="field-label" for="ri-input">
-                        Invigilators per session
-                        <span style="font-size:10px;color:var(--gray-500);">(optional)</span>
-                    </label>
-                    <input class="input" id="ri-input" type="number" min="1" placeholder="leave blank = all eligible">
+                <!-- Per-session Invigilators Count Inputs -->
+                <div id="fn-count-field" class="field" style="display:none;max-width:140px;">
+                    <label class="field-label" for="ri-input-fn">FN Invigilators</label>
+                    <input class="input" id="ri-input-fn" type="number" min="1" placeholder="auto">
+                </div>
+                <div id="an-count-field" class="field" style="display:none;max-width:140px;">
+                    <label class="field-label" for="ri-input-an">AN Invigilators</label>
+                    <input class="input" id="ri-input-an" type="number" min="1" placeholder="auto">
                 </div>
 
                 <button class="btn btn-primary" id="generate-btn" disabled style="align-self:flex-end;">
@@ -93,7 +94,10 @@ async function renderGenerate(container) {
     const sessionChecks = document.getElementById('session-checks');
     const chkFN         = document.getElementById('chk-fn');
     const chkAN         = document.getElementById('chk-an');
-    const riInput       = document.getElementById('ri-input');
+    const fnCountField  = document.getElementById('fn-count-field');
+    const anCountField  = document.getElementById('an-count-field');
+    const riInputFN     = document.getElementById('ri-input-fn');
+    const riInputAN     = document.getElementById('ri-input-an');
     const generateBtn   = document.getElementById('generate-btn');
     const exportRow     = document.getElementById('export-row');
     const resultEl      = document.getElementById('duty-result');
@@ -105,6 +109,8 @@ async function renderGenerate(container) {
         const idx = groupSelect.value;
         if (idx === '') {
             sessionChecks.style.display = 'none';
+            fnCountField.style.display  = 'none';
+            anCountField.style.display  = 'none';
             generateBtn.disabled = true;
             resultEl.innerHTML = '';
             exportRow.style.display = 'none';
@@ -114,28 +120,30 @@ async function renderGenerate(container) {
         currentGroupIdx = parseInt(idx, 10);
         const group = groups[currentGroupIdx];
 
-        const hasFN = group.sessions.some(s => s.session === 'FN');
-        const hasAN = group.sessions.some(s => s.session === 'AN');
+        const fnSess = group.sessions.find(s => s.session === 'FN');
+        const anSess = group.sessions.find(s => s.session === 'AN');
 
-        chkFN.disabled = !hasFN;
-        chkAN.disabled = !hasAN;
+        chkFN.disabled = !fnSess;
+        chkAN.disabled = !anSess;
 
-        chkFN.checked = hasFN;
-        chkAN.checked = hasAN;
+        chkFN.checked = !!fnSess;
+        chkAN.checked = !!anSess;
 
-        const withCount = group.sessions.find(s => s.requiredInvigilators);
-        riInput.value = withCount ? withCount.requiredInvigilators : '';
+        riInputFN.value = (fnSess && fnSess.requiredInvigilators != null) ? fnSess.requiredInvigilators : '';
+        riInputAN.value = (anSess && anSess.requiredInvigilators != null) ? anSess.requiredInvigilators : '';
 
         sessionChecks.style.display = 'block';
-        updateGenerateBtn();
+        updateVisibilityAndBtn();
 
         loadSavedDutyChart(group.sessions.map(s => s.id));
     });
 
-    chkFN.addEventListener('change', updateGenerateBtn);
-    chkAN.addEventListener('change', updateGenerateBtn);
+    chkFN.addEventListener('change', updateVisibilityAndBtn);
+    chkAN.addEventListener('change', updateVisibilityAndBtn);
 
-    function updateGenerateBtn() {
+    function updateVisibilityAndBtn() {
+        fnCountField.style.display = chkFN.checked ? 'block' : 'none';
+        anCountField.style.display = chkAN.checked ? 'block' : 'none';
         generateBtn.disabled = !(chkFN.checked || chkAN.checked);
     }
 
@@ -154,6 +162,23 @@ async function renderGenerate(container) {
         return selected;
     }
 
+    function getSessionCountsPayload() {
+        if (currentGroupIdx === null) return {};
+        const group = groups[currentGroupIdx];
+        const counts = {};
+        if (chkFN.checked) {
+            const s = group.sessions.find(s => s.session === 'FN');
+            const val = riInputFN.value.trim();
+            if (s && val) counts[s.id] = parseInt(val, 10);
+        }
+        if (chkAN.checked) {
+            const s = group.sessions.find(s => s.session === 'AN');
+            const val = riInputAN.value.trim();
+            if (s && val) counts[s.id] = parseInt(val, 10);
+        }
+        return counts;
+    }
+
     // STEP 1: Generate Draft
     generateBtn.addEventListener('click', async () => {
         const sessionIds = getSelectedSessionIds();
@@ -164,10 +189,10 @@ async function renderGenerate(container) {
         resultEl.innerHTML = '<p class="empty-state">Computing eligible faculty...</p>';
 
         try {
-            const riVal = riInput.value.trim();
-            const body  = {
+            const sessionCounts = getSessionCountsPayload();
+            const body = {
                 sessionIds,
-                ...(riVal ? { required_invigilators: parseInt(riVal, 10) } : {}),
+                ...(Object.keys(sessionCounts).length > 0 ? { sessionCounts } : {}),
             };
             const preview = await api.post('/allocation/session-preview', body);
             currentSessionIds = sessionIds;
@@ -183,13 +208,19 @@ async function renderGenerate(container) {
 
     // Preview chart
     function showPreviewChart(preview, sessionIds) {
+        const shortfalls = preview.filter(p => p.shortfall > 0);
+        if (shortfalls.length > 0) {
+            const warningMsg = `Warning: Faculty Shortage in ${shortfalls.map(s => `${s.session} (needed ${s.requestedCount}, only ${s.totalEligible} eligible)`).join(' | ')}`;
+            showFloatingWarningModal(warningMsg, 'Faculty Shortage Warning Alert');
+        }
+
         const sectionsHtml = preview.map(p => {
             const sessionColor = p.session === 'FN' ? '#2563eb' : '#d97706';
             const sessionBg    = p.session === 'FN' ? '#eff6ff' : '#fffbeb';
 
             const shortfallBadge = p.shortfall > 0
                 ? `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;font-size:11px;padding:2px 8px;border-radius:4px;margin-left:8px;">
-                       Warning: Shortfall of ${p.shortfall} (only ${p.totalEligible} eligible)
+                       Warning: Faculty Shortage of ${p.shortfall} (only ${p.totalEligible} eligible)
                    </span>` : '';
 
             const rows = p.assignees.map((a, i) => {
@@ -209,6 +240,7 @@ async function renderGenerate(container) {
                     <div style="background:${sessionBg};padding:10px 16px;display:flex;align-items:center;gap:10px;">
                         <span style="background:${sessionColor};color:#fff;font-weight:700;font-size:12px;padding:3px 12px;border-radius:20px;">${p.session}</span>
                         <span style="font-weight:600;">${escapeHtml(p.examName)} - ${escapeHtml(p.examDate)}</span>
+                        ${p.course ? `<span style="background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(p.course)}</span>` : ''}
                         ${p.yearSem ? `<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(p.yearSem)}</span>` : ''}
                         <span style="font-size:12px;color:var(--gray-600);margin-left:auto;">
                             ${p.assignees.length} of ${p.requestedCount} invigilators
@@ -248,17 +280,17 @@ async function renderGenerate(container) {
             btn.disabled = true;
             btn.textContent = 'Saving...';
             try {
-                const riVal = riInput.value.trim();
-                const body  = {
+                const sessionCounts = getSessionCountsPayload();
+                const body = {
                     sessionIds: currentSessionIds,
-                    ...(riVal ? { required_invigilators: parseInt(riVal, 10) } : {}),
+                    ...(Object.keys(sessionCounts).length > 0 ? { sessionCounts } : {}),
                 };
                 const results = await api.post('/allocation/session-generate', body);
                 const total = results.reduce((s, r) => s + r.totalAssigned, 0);
                 showToast(`Finalized! ${total} duties saved across ${results.length} session(s).`);
                 const shortfalls = results.filter(r => r.shortfall > 0);
                 if (shortfalls.length > 0) {
-                    showToast(`Warning: ${shortfalls.map(r => r.session + ': needed ' + r.requestedCount + ', got ' + r.totalAssigned).join(' | ')}`, true);
+                    showToast(`Warning: Faculty Shortage in ${shortfalls.map(r => r.session + ': needed ' + r.requestedCount + ', got ' + r.totalAssigned).join(' | ')}`, true);
                 }
                 loadSavedDutyChart(currentSessionIds);
             } catch (err) {
@@ -328,6 +360,7 @@ async function renderGenerate(container) {
                         <div style="background:#f0fdf4;padding:10px 16px;display:flex;align-items:center;gap:10px;">
                             <span style="background:${sessionColor};color:#fff;font-weight:700;font-size:12px;padding:3px 12px;border-radius:20px;">${sess}</span>
                             <span style="font-weight:600;">${escapeHtml(examInfo.exam_name)} - ${String(examInfo.exam_date).slice(0,10)}</span>
+                            ${examInfo.course ? `<span style="background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(examInfo.course)}</span>` : ''}
                             ${examInfo.year_sem ? `<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(examInfo.year_sem)}</span>` : ''}
                             <span style="font-size:12px;color:var(--gray-600);margin-left:auto;">${rows.length} invigilator(s)</span>
                         </div>

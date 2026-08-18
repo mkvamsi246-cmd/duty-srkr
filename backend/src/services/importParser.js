@@ -193,6 +193,7 @@ function parseExamSessionsExcel(workbook) {
 
     const header = rows[0];
     const examCol     = findColumn(header, ['examname', 'exam', 'subject']);
+    const courseCol   = findColumn(header, ['course', 'programme', 'degree', 'branch', 'stream']);
     const dateCol     = findColumn(header, ['date', 'examdate']);
     const sessionCol  = findColumn(header, ['session', 'slot']);
     const yearSemCol  = findColumn(header, ['year', 'yearsem', 'yearsemester', 'batch', 'semester']);
@@ -203,6 +204,7 @@ function parseExamSessionsExcel(workbook) {
 
     const records = [];
     let skipped = 0;
+    const VALID_COURSES = ['B.Tech', 'M.Tech', 'B.B.A'];
 
     for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
@@ -218,6 +220,12 @@ function parseExamSessionsExcel(workbook) {
             dateVal = String(dateVal).trim().slice(0, 10);
         }
 
+        let rawCourse = courseCol !== -1 ? (row[courseCol] != null ? String(row[courseCol]).trim() : null) : null;
+        if (rawCourse) {
+            const matched = VALID_COURSES.find(c => c.toLowerCase() === rawCourse.toLowerCase());
+            rawCourse = matched || rawCourse;
+        }
+
         const rawSession = sessionCol !== -1 ? String(row[sessionCol] || 'FN').trim().toUpperCase() : 'FN';
         const rawYearSem = yearSemCol !== -1 ? (row[yearSemCol] != null ? String(row[yearSemCol]).trim() : null) : null;
         const rawReqInvig = reqInvigCol !== -1 ? (row[reqInvigCol] != null ? parseInt(row[reqInvigCol], 10) : null) : null;
@@ -231,6 +239,7 @@ function parseExamSessionsExcel(workbook) {
         for (const sess of sessionsToInsert) {
             records.push({
                 examName: String(row[examCol]).trim(),
+                course: rawCourse || null,
                 date: dateVal,
                 session: sess,
                 yearSem: rawYearSem,

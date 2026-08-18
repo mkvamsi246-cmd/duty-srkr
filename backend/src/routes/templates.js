@@ -41,11 +41,12 @@ router.get('/:type', (req, res) => {
     if (type === 'exam_sessions') {
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet([
-            ['Exam Name', 'Date',       'Session', 'Year/Sem', 'Required Invigilators', 'Start Time', 'End Time'],
-            ['MID-1',     '2026-08-25', 'BOTH',    '4-1',      10,                       '09:30',      '12:30'],
-            ['Mid-2',     '2026-08-26', 'FN',      '3-1',      8,                        '09:30',      '12:30'],
+            ['Exam Name', 'Course', 'Date',       'Session', 'Year/Sem', 'Required Invigilators', 'Start Time', 'End Time'],
+            ['MID-1',     'B.Tech', '2026-08-25', 'BOTH',    '4-1',      10,                       '09:30',      '12:30'],
+            ['Mid-2',     'M.Tech', '2026-08-26', 'FN',      '3-1',      8,                        '09:30',      '12:30'],
+            ['Sem-1',     'B.B.A',  '2026-08-27', 'AN',      '2-1',      6,                        '14:00',      '17:00'],
         ]);
-        ws['!cols'] = [{ wch: 15 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 12 }];
+        ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 12 }];
         XLSX.utils.book_append_sheet(wb, ws, 'Exam Sessions');
         const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

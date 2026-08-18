@@ -41,18 +41,21 @@ router.get('/list-exams', async (req, res) => {
     }
 });
 
-function formatYearSemLabel(yearSemStr, examName) {
-    if (!yearSemStr) return `${examName} Exams`;
+function formatYearSemLabel(yearSemStr, examName, course) {
+    let courseLabel = course ? String(course).trim().toUpperCase().replace(/\./g, '') : 'BTECH';
+    if (!courseLabel || courseLabel === 'NULL') courseLabel = 'BTECH';
+
+    if (!yearSemStr) return `${courseLabel} ${examName} Exams`;
     const str = String(yearSemStr).trim();
     const romanYears = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' };
     const parts = str.split('-');
     if (parts.length === 2 && romanYears[parts[0]]) {
-        return `${romanYears[parts[0]]} BTECH SEM-${parts[1]} ${examName} Exams`;
+        return `${romanYears[parts[0]]} ${courseLabel} SEM-${parts[1]} ${examName} Exams`;
     }
-    if (/sem|btech|bba/i.test(str)) {
+    if (/sem|btech|bba|mtech/i.test(str)) {
         return `${str} ${examName} Exams`;
     }
-    return `${str} ${examName} Exams`;
+    return `${courseLabel} ${str} ${examName} Exams`;
 }
 
 function getSessionLetter(yearSemStr, sessionStr) {
@@ -70,47 +73,53 @@ function getSessionLetter(yearSemStr, sessionStr) {
     }
 }
 
-async function buildSheetData(examName, yearSem, userId) {
-    let sql = `SELECT id, exam_name, exam_date, session, year_sem, required_invigilators
+async function buildSheetData(examName, yearSem, userId, course) {
+    let sql = `SELECT id, exam_name, course, exam_date, session, year_sem, required_invigilators
                FROM exam_sessions WHERE exam_name = $1 AND user_id = $2`;
     const params = [examName, userId];
     if (yearSem) {
-        sql += ` AND year_sem = $3`;
         params.push(yearSem);
+        sql += ` AND year_sem = $${params.length}`;
+    }
+    if (course) {
+        params.push(course);
+        sql += ` AND course = $${params.length}`;
     }
     sql += ` ORDER BY exam_date ASC, CASE session WHEN 'FN' THEN 0 ELSE 1 END`;
 
     const { rows: sessions } = await db.query(sql, params);
     if (sessions.length === 0) {
-        return { examName, yearSem, sessionCols: [], facultyRows: [], legendList: [], monthYearLabel: '' };
+        return { examName, yearSem, course, sessionCols: [], facultyRows: [], legendList: [], monthYearLabel: '' };
     }
 
     let sessionCols = [];
     const legendList = [];
-    const yearSemMap = new Map();
+    const courseYearSemMap = new Map();
 
     sessionCols = sessions.map((s, i) => {
         const ys = s.year_sem || yearSem || '1-1';
+        const c  = s.course || 'B.Tech';
+        const key = `${c}|||${ys}`;
         const letter = getSessionLetter(ys, s.session);
 
-        if (!yearSemMap.has(ys)) yearSemMap.set(ys, new Set());
-        yearSemMap.get(ys).add(letter);
+        if (!courseYearSemMap.has(key)) courseYearSemMap.set(key, { course: c, yearSem: ys, letters: new Set() });
+        courseYearSemMap.get(key).letters.add(letter);
 
         return {
             id: i, sessionId: s.id,
             date: toYYYYMMDD(s.exam_date), day: dayAbbr(toYYYYMMDD(s.exam_date)),
-            session: s.session, yearSem: ys,
+            session: s.session, yearSem: ys, course: c,
             letter: letter,
             requiredInvigilators: s.required_invigilators || 0,
         };
     });
 
-    for (const [ys, letterSet] of yearSemMap.entries()) {
-        const lettersArr = Array.from(letterSet);
+    for (const item of courseYearSemMap.values()) {
+        const lettersArr = Array.from(item.letters);
         const letterKey = lettersArr.join('&');
         legendList.push({
             letterKey,
-            description: formatYearSemLabel(ys, examName),
+            description: formatYearSemLabel(item.yearSem, examName, item.course),
         });
     }
 
@@ -161,26 +170,26 @@ async function buildSheetData(examName, yearSem, userId) {
         };
     });
 
-    return { examName, yearSem, sessionCols, facultyRows, legendList, monthYearLabel: sessionCols.length ? monthYear(sessionCols[0].date) : '' };
+    return { examName, yearSem, course, sessionCols, facultyRows, legendList, monthYearLabel: sessionCols.length ? monthYear(sessionCols[0].date) : '' };
 }
 
-/** GET /api/duty-sheet/preview?examName=&yearSem= */
+/** GET /api/duty-sheet/preview?examName=&yearSem=&course= */
 router.get('/preview', async (req, res) => {
-    const { examName, yearSem } = req.query;
+    const { examName, yearSem, course } = req.query;
     if (!examName) return res.status(400).json({ error: 'examName required' });
     try {
-        res.json(await buildSheetData(examName, yearSem || null, req.userId));
+        res.json(await buildSheetData(examName, yearSem || null, req.userId, course || null));
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
-/** GET /api/duty-sheet/export?examName=&yearSem= */
+/** GET /api/duty-sheet/export?examName=&yearSem=&course= */
 router.get('/export', async (req, res) => {
-    const { examName, yearSem } = req.query;
+    const { examName, yearSem, course } = req.query;
     if (!examName) return res.status(400).json({ error: 'examName required' });
     try {
-        const { sessionCols, facultyRows, legendList, monthYearLabel } = await buildSheetData(examName, yearSem || null, req.userId);
+        const { sessionCols, facultyRows, legendList, monthYearLabel } = await buildSheetData(examName, yearSem || null, req.userId, course || null);
 
         const wb = new ExcelJS.Workbook();
         wb.creator = 'Invigilation System';
@@ -226,7 +235,7 @@ router.get('/export', async (req, res) => {
             setCell(r.getCell(1), rn === 1 ? 'S.No' : '', hdrFont, cen, hdrFill, border);
             setCell(r.getCell(2), rn === 1 ? monthYearLabel : (rn === 3 ? 'CSE' : ''), hdrFont, cen, hdrFill, border);
             sessionCols.forEach((sc, i) => {
-                const vals = [sc.date, sc.day, sc.yearSem || 'CSE'];
+                const vals = [sc.date, sc.day, (sc.course ? sc.course + ' ' : '') + (sc.yearSem || 'CSE')];
                 setCell(r.getCell(sessStartCol + i), vals[rn - 1], hdrFont, cen, hdrFill, border);
             });
             [dutiesCol, scCol, contactCol, tcCol, saCol, suCol, roomCol].forEach(c => {

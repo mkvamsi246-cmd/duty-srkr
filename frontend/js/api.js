@@ -104,6 +104,82 @@ const api = {
     getCached:  (path)       => apiCache.has(path) ? apiCache.get(path).data : null,
 };
 
+function playBellSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        const playTone = (freq, startTime, duration) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, startTime);
+            gain.gain.setValueAtTime(0.35, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        };
+        const now = ctx.currentTime;
+        playTone(880, now, 0.5);          // A5 bell note
+        playTone(1318.51, now + 0.08, 0.7); // E6 harmonic bell chime
+    } catch (e) {
+        console.warn('Audio bell play failed:', e);
+    }
+}
+
+function showFloatingWarningModal(message, title = 'Faculty Shortage Warning Alert') {
+    playBellSound();
+
+    let modalOverlay = document.getElementById('warning-modal-overlay');
+    if (!modalOverlay) {
+        modalOverlay = document.createElement('div');
+        modalOverlay.id = 'warning-modal-overlay';
+        modalOverlay.className = 'warning-modal-overlay';
+        document.body.appendChild(modalOverlay);
+    }
+
+    const safeTitle = String(title || 'Faculty Shortage Warning Alert').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeMsg   = String(message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
+    modalOverlay.innerHTML = `
+        <div class="warning-modal-card">
+            <div class="warning-modal-header">
+                <div class="warning-modal-title-wrap">
+                    <span class="warning-modal-bell-icon">🔔</span>
+                    <h3 class="warning-modal-title">${safeTitle}</h3>
+                </div>
+                <button type="button" class="warning-modal-close-btn" id="warning-modal-close-x">&times;</button>
+            </div>
+            <div class="warning-modal-body">
+                <div class="warning-modal-alert-box">
+                    <span class="warning-alert-icon">⚠️</span>
+                    <div class="warning-modal-message">${safeMsg}</div>
+                </div>
+            </div>
+            <div class="warning-modal-footer">
+                <button type="button" class="btn btn-primary warning-modal-ok-btn" id="warning-modal-ok-btn">OK, Understood</button>
+            </div>
+        </div>
+    `;
+
+    modalOverlay.classList.add('active');
+
+    const closeModal = () => {
+        modalOverlay.classList.remove('active');
+    };
+
+    document.getElementById('warning-modal-close-x').onclick = closeModal;
+    document.getElementById('warning-modal-ok-btn').onclick = closeModal;
+    modalOverlay.onclick = (e) => {
+        if (e.target === modalOverlay) closeModal();
+    };
+}
+
 function showToast(message, isError = false) {
     const toast = document.getElementById('toast');
     toast.textContent = message;
@@ -111,4 +187,9 @@ function showToast(message, isError = false) {
     toast.classList.remove('hidden');
     clearTimeout(showToast._timer);
     showToast._timer = setTimeout(() => toast.classList.add('hidden'), 3500);
+
+    // If message is a warning/error or contains shortfall/shortage, pop up floating warning window + bell sound
+    if (isError || (message && /warning|shortfall|shortage|issue|error/i.test(message))) {
+        showFloatingWarningModal(message, isError ? 'Faculty Shortage Warning Alert' : 'Faculty Shortage Warning Alert');
+    }
 }

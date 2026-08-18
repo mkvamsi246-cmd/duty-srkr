@@ -97,14 +97,15 @@ router.post('/:importType', upload.single('file'), async (req, res) => {
             for (const r of records) {
                 const sessionRes = await db.query(
                     `INSERT INTO exam_sessions
-                         (user_id, exam_name, exam_date, session, year_sem, required_invigilators)
-                     VALUES ($1, $2, $3, $4, $5, $6)
+                         (user_id, exam_name, course, exam_date, session, year_sem, required_invigilators)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
                      ON CONFLICT (exam_name, exam_date, session) DO UPDATE SET
                          exam_name             = EXCLUDED.exam_name,
+                         course                = COALESCE(EXCLUDED.course, exam_sessions.course),
                          year_sem              = COALESCE(EXCLUDED.year_sem, exam_sessions.year_sem),
                          required_invigilators = COALESCE(EXCLUDED.required_invigilators, exam_sessions.required_invigilators)
                      RETURNING id`,
-                    [req.userId, r.examName, r.date, r.session, r.yearSem || null, r.requiredInvigilators || null]
+                    [req.userId, r.examName, r.course || null, r.date, r.session, r.yearSem || null, r.requiredInvigilators || null]
                 );
                 const examSessionId = sessionRes.rows[0].id;
 
@@ -138,19 +139,20 @@ router.post('/:importType', upload.single('file'), async (req, res) => {
                 if (existing.rows.length > 0) {
                     await db.query(
                         `UPDATE exam_sessions SET
-                            year_sem = COALESCE($1, year_sem),
-                            required_invigilators = COALESCE($2, required_invigilators),
-                            start_time = COALESCE($3, start_time),
-                            end_time = COALESCE($4, end_time)
-                         WHERE id = $5 AND user_id = $6`,
-                        [r.yearSem || null, r.requiredInvigilators || null, r.startTime || null, r.endTime || null, existing.rows[0].id, req.userId]
+                            course = COALESCE($1, course),
+                            year_sem = COALESCE($2, year_sem),
+                            required_invigilators = COALESCE($3, required_invigilators),
+                            start_time = COALESCE($4, start_time),
+                            end_time = COALESCE($5, end_time)
+                         WHERE id = $6 AND user_id = $7`,
+                        [r.course || null, r.yearSem || null, r.requiredInvigilators || null, r.startTime || null, r.endTime || null, existing.rows[0].id, req.userId]
                     );
                 } else {
                     await db.query(
                         `INSERT INTO exam_sessions
-                             (user_id, exam_name, exam_date, session, year_sem, required_invigilators, start_time, end_time)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                        [req.userId, r.examName, r.date, r.session, r.yearSem || null, r.requiredInvigilators || null, r.startTime || null, r.endTime || null]
+                             (user_id, exam_name, course, exam_date, session, year_sem, required_invigilators, start_time, end_time)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                        [req.userId, r.examName, r.course || null, r.date, r.session, r.yearSem || null, r.requiredInvigilators || null, r.startTime || null, r.endTime || null]
                     );
                 }
                 imported++;

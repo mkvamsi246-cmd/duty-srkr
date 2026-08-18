@@ -47,7 +47,7 @@ async function renderDashboard(container) {
             ${upcoming.length === 0 ? '<p class="empty-state">No exam sessions yet. Add one under "Exam Sessions".</p>' : `
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Exam</th><th>Date</th><th>Session</th></tr></thead>
+                    <thead><tr><th>Exam</th><th>Course</th><th>Date</th><th>Session</th></tr></thead>
                     <tbody>
                         ${upcoming.map((g) => {
                             const sessNames = g.sessions.map(s => s.session);
@@ -57,6 +57,11 @@ async function renderDashboard(container) {
                             return `
                                 <tr>
                                     <td>${escapeHtml(g.examName)}</td>
+                                    <td>
+                                        ${g.course
+                                            ? `<span style="background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${escapeHtml(g.course)}</span>`
+                                            : '<span style="color:var(--gray-400);font-size:11px;">-</span>'}
+                                    </td>
                                     <td>${escapeHtml(g.examDate)}</td>
                                     <td><span style="font-weight:600;">${escapeHtml(sessionText)}</span></td>
                                 </tr>

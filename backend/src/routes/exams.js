@@ -6,6 +6,8 @@ const { VALID_YEAR_SEMS } = require('../utils/yearSem');
 
 router.use(requireAuth);
 
+const VALID_COURSES = ['B.Tech', 'M.Tech', 'B.B.A'];
+
 // List exam sessions
 router.get('/', async (req, res) => {
     try {
@@ -22,7 +24,7 @@ router.get('/', async (req, res) => {
 router.get('/grouped', async (req, res) => {
     try {
         const { rows } = await db.query(
-            `SELECT id, exam_name, exam_date, session, year_sem, required_invigilators,
+            `SELECT id, exam_name, course, exam_date, session, year_sem, required_invigilators,
                     start_time, end_time
              FROM exam_sessions
              WHERE user_id = $1
@@ -31,10 +33,11 @@ router.get('/grouped', async (req, res) => {
         );
         const map = new Map();
         for (const r of rows) {
-            const key = `${r.exam_name}|||${String(r.exam_date).slice(0,10)}|||${r.year_sem || ''}`;
+            const key = `${r.exam_name}|||${String(r.exam_date).slice(0,10)}|||${r.course || ''}|||${r.year_sem || ''}`;
             if (!map.has(key)) {
                 map.set(key, {
                     examName: r.exam_name,
+                    course:   r.course,
                     examDate: String(r.exam_date).slice(0, 10),
                     yearSem:  r.year_sem,
                     sessions: [],
@@ -56,9 +59,14 @@ router.get('/grouped', async (req, res) => {
 
 // Create exam session
 router.post('/', async (req, res) => {
-    const { exam_name, exam_date, session, start_time, end_time, year_sem, required_invigilators } = req.body;
+    const { exam_name, course, exam_date, session, start_time, end_time, year_sem, required_invigilators } = req.body;
     if (!exam_name || !exam_date) {
         return res.status(400).json({ error: 'exam_name and exam_date are required' });
+    }
+    if (!course || !VALID_COURSES.includes(String(course).trim())) {
+        return res.status(400).json({
+            error: `Course selection is required. Please select one of: ${VALID_COURSES.join(', ')}`,
+        });
     }
     if (!year_sem || !VALID_YEAR_SEMS.includes(String(year_sem).trim())) {
         return res.status(400).json({
@@ -72,12 +80,13 @@ router.post('/', async (req, res) => {
     try {
         const { rows } = await db.query(
             `INSERT INTO exam_sessions
-                 (user_id, exam_name, exam_date, session, start_time, end_time, year_sem, required_invigilators)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 (user_id, exam_name, course, exam_date, session, start_time, end_time, year_sem, required_invigilators)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
             [
                 req.userId,
                 exam_name,
+                course.trim(),
                 exam_date,
                 session || 'FN',
                 start_time || null,
@@ -92,15 +101,22 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Update required_invigilators (or year_sem) on an existing session
+// Update required_invigilators (or year_sem / course) on an existing session
 router.patch('/:id', async (req, res) => {
-    const { required_invigilators, year_sem } = req.body;
+    const { required_invigilators, year_sem, course } = req.body;
     const updates = [];
     const values = [];
 
     if (required_invigilators !== undefined) {
         values.push(required_invigilators != null ? (parseInt(required_invigilators, 10) || null) : null);
         updates.push(`required_invigilators = $${values.length}`);
+    }
+    if (course !== undefined) {
+        if (!VALID_COURSES.includes(String(course).trim())) {
+            return res.status(400).json({ error: `course must be one of: ${VALID_COURSES.join(', ')}` });
+        }
+        values.push(course.trim());
+        updates.push(`course = $${values.length}`);
     }
     if (year_sem !== undefined) {
         if (!VALID_YEAR_SEMS.includes(String(year_sem).trim())) {

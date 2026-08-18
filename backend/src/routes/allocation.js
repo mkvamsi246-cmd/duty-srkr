@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -16,12 +16,12 @@ router.use(requireAuth);
  */
 router.post('/session-preview', async (req, res) => {
     try {
-        const { sessionIds, required_invigilators } = req.body;
+        const { sessionIds, required_invigilators, sessionCounts } = req.body;
         if (!sessionIds || !Array.isArray(sessionIds) || sessionIds.length === 0) {
             return res.status(400).json({ error: 'sessionIds array is required' });
         }
         const count = required_invigilators ? parseInt(required_invigilators, 10) : null;
-        const result = await engine.previewSessionDuties(sessionIds.map(Number), count);
+        const result = await engine.previewSessionDuties(sessionIds.map(Number), count, sessionCounts || null);
         res.json(result);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -30,17 +30,17 @@ router.post('/session-preview', async (req, res) => {
 
 /**
  * POST /api/allocation/session-generate
- * Body: { sessionIds: [id, ...], required_invigilators?: number }
+ * Body: { sessionIds: [id, ...], required_invigilators?: number, sessionCounts?: object }
  * Finalizes duties and writes to session_duty table.
  */
 router.post('/session-generate', async (req, res) => {
     try {
-        const { sessionIds, required_invigilators } = req.body;
+        const { sessionIds, required_invigilators, sessionCounts } = req.body;
         if (!sessionIds || !Array.isArray(sessionIds) || sessionIds.length === 0) {
             return res.status(400).json({ error: 'sessionIds array is required' });
         }
         const count = required_invigilators ? parseInt(required_invigilators, 10) : null;
-        const result = await engine.generateSessionDuties(sessionIds.map(Number), count);
+        const result = await engine.generateSessionDuties(sessionIds.map(Number), count, sessionCounts || null);
         res.json(result);
     } catch (err) {
         res.status(400).json({ error: err.message });
