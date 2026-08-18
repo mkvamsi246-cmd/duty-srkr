@@ -97,7 +97,7 @@ async function getPrevDayAssignedIds(examDate) {
  *   - Tiebreak: name ASC
  *   - Consecutive-day rule: Move faculty with duty on previous exam date to back of pool (used only if more are needed)
  */
-async function getEligibleFacultyPool(examDate, session, sessionPeriods) {
+async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAssignedDatesMap = null) {
     const dayAbbrev       = dayOfWeekAbbrev(examDate);
     const relevantPeriods = sessionPeriods[session] || [];
 
@@ -115,7 +115,7 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods) {
                SELECT faculty_id FROM faculty_unavailability
                WHERE date = $3 AND (session = $4 OR session = 'ALL')
            )
-         ORDER BY f.duty_count ASC, f.serial_no DESC NULLS LAST, f.name ASC`,
+         ORDER BY f.serial_no DESC NULLS LAST, f.duty_count ASC, f.name ASC`,
         [dayAbbrev, relevantPeriods, examDate, session]
     );
 
@@ -146,15 +146,32 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods) {
         }
     }
 
-    // Layer 3: consecutive-day rule — move faculty with duty on previous exam date to back of pool
+    // Layer 3: consecutive-day rule — move faculty with duty on previous/consecutive exam date to back of pool
     const prevDayIds = await getPrevDayAssignedIds(examDate);
-    if (prevDayIds.size > 0) {
-        const noPrevDuty   = eligible.filter(f => !prevDayIds.has(f.id));
-        const withPrevDuty = eligible.filter(f => prevDayIds.has(f.id));
-        eligible = [...noPrevDuty, ...withPrevDuty];
+    const examTimeMs = new Date(examDate).getTime();
+
+    const noPrevDuty = [];
+    const withPrevDuty = [];
+
+    for (const f of eligible) {
+        let hasConsecutive = prevDayIds.has(f.id);
+        if (!hasConsecutive && batchAssignedDatesMap && batchAssignedDatesMap.has(f.id)) {
+            for (const assignedDateStr of batchAssignedDatesMap.get(f.id)) {
+                const diffDays = Math.abs((examTimeMs - new Date(assignedDateStr).getTime()) / (1000 * 3600 * 24));
+                if (diffDays <= 1) {
+                    hasConsecutive = true;
+                    break;
+                }
+            }
+        }
+        if (hasConsecutive) {
+            withPrevDuty.push(f);
+        } else {
+            noPrevDuty.push(f);
+        }
     }
 
-    return eligible;
+    return [...noPrevDuty, ...withPrevDuty];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,9 +189,8 @@ async function previewSessionDuties(sessionIds, overrideCount, sessionCounts = n
     const { sessionPeriods } = await getSettings();
     const results = [];
 
-    // Track faculty IDs already assigned in an earlier session of this same call
-    // so fresh faculty are prioritized first before reusing faculty across FN + AN.
     const assignedAcrossSessions = new Set();
+    const batchAssignedDatesMap = new Map(); // facultyId -> Set of date strings
 
     for (const examSessionId of sessionIds) {
         const { rows: sr } = await db.query(
@@ -182,9 +198,10 @@ async function previewSessionDuties(sessionIds, overrideCount, sessionCounts = n
         );
         if (sr.length === 0) throw new Error(`Exam session ${examSessionId} not found`);
         const sess = sr[0];
+        const dateStr = String(sess.exam_date).slice(0, 10);
 
         const fullPool = await getEligibleFacultyPool(
-            sess.exam_date, sess.session, sessionPeriods
+            sess.exam_date, sess.session, sessionPeriods, batchAssignedDatesMap
         );
         const freshPool = fullPool.filter(f => !assignedAcrossSessions.has(f.id));
 
@@ -207,7 +224,11 @@ async function previewSessionDuties(sessionIds, overrideCount, sessionCounts = n
             assigned = assigned.concat(reusablePool.slice(0, extraNeeded));
         }
 
-        assigned.forEach(f => assignedAcrossSessions.add(f.id));
+        assigned.forEach(f => {
+            assignedAcrossSessions.add(f.id);
+            if (!batchAssignedDatesMap.has(f.id)) batchAssignedDatesMap.set(f.id, new Set());
+            batchAssignedDatesMap.get(f.id).add(dateStr);
+        });
         const shortfall = Math.max(0, count - assigned.length);
 
         results.push({
@@ -215,7 +236,7 @@ async function previewSessionDuties(sessionIds, overrideCount, sessionCounts = n
             session: sess.session,
             examName: sess.exam_name,
             course:   sess.course,
-            examDate: String(sess.exam_date).slice(0, 10),
+            examDate: dateStr,
             yearSem: sess.year_sem,
             requestedCount: count,
             assignees: assigned.map(f => ({
@@ -253,9 +274,8 @@ async function generateSessionDuties(sessionIds, overrideCount, sessionCounts = 
         const { sessionPeriods } = await getSettings();
         const results = [];
 
-        // Track faculty IDs already assigned in an earlier session of this same call
-        // so fresh faculty are prioritized first before reusing faculty across FN + AN.
         const assignedAcrossSessions = new Set();
+        const batchAssignedDatesMap = new Map();
 
         for (const examSessionId of sessionIds) {
             const { rows: sr } = await client.query(
@@ -263,6 +283,7 @@ async function generateSessionDuties(sessionIds, overrideCount, sessionCounts = 
             );
             if (sr.length === 0) throw new Error(`Exam session ${examSessionId} not found`);
             const sess = sr[0];
+            const dateStr = String(sess.exam_date).slice(0, 10);
 
             // Decrement duty_count for previously assigned faculty
             const { rows: prev } = await client.query(
@@ -295,7 +316,7 @@ async function generateSessionDuties(sessionIds, overrideCount, sessionCounts = 
             }
 
             const fullPool = await getEligibleFacultyPool(
-                sess.exam_date, sess.session, sessionPeriods
+                sess.exam_date, sess.session, sessionPeriods, batchAssignedDatesMap
             );
             const freshPool = fullPool.filter(f => !assignedAcrossSessions.has(f.id));
 
@@ -314,7 +335,11 @@ async function generateSessionDuties(sessionIds, overrideCount, sessionCounts = 
                 assigned = assigned.concat(reusablePool.slice(0, extraNeeded));
             }
 
-            assigned.forEach(f => assignedAcrossSessions.add(f.id));
+            assigned.forEach(f => {
+                assignedAcrossSessions.add(f.id);
+                if (!batchAssignedDatesMap.has(f.id)) batchAssignedDatesMap.set(f.id, new Set());
+                batchAssignedDatesMap.get(f.id).add(dateStr);
+            });
             const shortfall = Math.max(0, count - assigned.length);
 
             for (const f of assigned) {

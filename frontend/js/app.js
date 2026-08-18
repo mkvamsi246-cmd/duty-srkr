@@ -23,7 +23,7 @@ function showApp(loggedIn, username, resetToDashboard = false) {
             window.currentUsername = username;
             const deptDisplay = formatDeptName(username);
             const badgeText = document.getElementById('user-dept-text');
-            if (badgeText) badgeText.textContent = `Welcome ${deptDisplay}`;
+            if (badgeText) badgeText.textContent = `WELCOME ${deptDisplay || 'CSE'}`;
         }
         if (resetToDashboard) {
             navigateTo('dashboard');
