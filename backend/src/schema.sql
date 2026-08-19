@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS faculty (
     room_no         VARCHAR(50),
     is_active       BOOLEAN NOT NULL DEFAULT true,
     duty_count      INTEGER NOT NULL DEFAULT 0,   -- running total, used for fairness
+    sat_duty_count  INTEGER NOT NULL DEFAULT 0,   -- Saturday duties count
+    sun_duty_count  INTEGER NOT NULL DEFAULT 0,   -- Sunday duties count
     priority        INTEGER NOT NULL DEFAULT 3,   -- lower number = assigned first (Prof=1,Assoc=2,Asst=3)
     user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
@@ -157,6 +159,8 @@ ALTER TABLE faculty ADD COLUMN IF NOT EXISTS serial_no INTEGER;
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS shortcuts VARCHAR(200);
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50);
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50);
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS sat_duty_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS sun_duty_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
 ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS course VARCHAR(50);

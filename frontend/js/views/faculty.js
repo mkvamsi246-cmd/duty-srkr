@@ -24,9 +24,17 @@ async function renderFaculty(container) {
                 <div class="field" style="max-width:110px;"><label class="field-label">Shortcuts</label><input class="input" name="shortcuts" placeholder="e.g. AE"></div>
                 <div class="field" style="max-width:130px;"><label class="field-label">Contact</label><input class="input" name="contact" placeholder="Contact/Phone"></div>
                 <div class="field" style="max-width:100px;"><label class="field-label">Room No</label><input class="input" name="room_no" placeholder="Room No"></div>
-                <div class="field" style="max-width:100px;">
+                <div class="field" style="max-width:90px;">
                     <label class="field-label">Duty Count</label>
                     <input class="input" name="duty_count" type="number" min="0" value="0">
+                </div>
+                <div class="field" style="max-width:70px;">
+                    <label class="field-label">SA</label>
+                    <input class="input" name="sat_duty_count" type="number" min="0" value="0">
+                </div>
+                <div class="field" style="max-width:70px;">
+                    <label class="field-label">SU</label>
+                    <input class="input" name="sun_duty_count" type="number" min="0" value="0">
                 </div>
                 <button class="btn btn-primary" type="submit">Add</button>
             </form>
@@ -43,7 +51,7 @@ async function renderFaculty(container) {
                     <thead><tr>
                         <th>S.No</th><th>Name</th><th>Designation</th><th>Dept</th>
                         <th>Shortcuts</th><th>Contact</th><th>Room No</th>
-                        <th>Duty Count</th>
+                        <th>Duty Count</th><th>SA</th><th>SU</th>
                         <th>Status</th><th>Actions</th>
                     </tr></thead>
                     <tbody>${faculty.map(facultyRow).join('')}</tbody>
@@ -53,7 +61,7 @@ async function renderFaculty(container) {
 
         <!-- Edit Modal Container -->
         <div id="edit-faculty-modal" class="modal-backdrop hidden">
-            <div class="modal" style="width:480px;">
+            <div class="modal" style="width:500px;">
                 <h3>Edit Faculty Member</h3>
                 <form id="edit-faculty-form" style="display:flex;flex-direction:column;gap:12px;">
                     <input type="hidden" id="edit-faculty-id">
@@ -95,9 +103,19 @@ async function renderFaculty(container) {
                             <input class="input" id="edit-room-no" placeholder="Room No">
                         </div>
                     </div>
-                    <div>
-                        <label class="field-label">Duty Count</label>
-                        <input class="input" id="edit-duty-count" type="number" min="0">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                        <div>
+                            <label class="field-label">Duty Count</label>
+                            <input class="input" id="edit-duty-count" type="number" min="0">
+                        </div>
+                        <div>
+                            <label class="field-label">SA Count</label>
+                            <input class="input" id="edit-sat-duty-count" type="number" min="0">
+                        </div>
+                        <div>
+                            <label class="field-label">SU Count</label>
+                            <input class="input" id="edit-sun-duty-count" type="number" min="0">
+                        </div>
                     </div>
                     <div class="modal-actions">
                         <button class="btn" type="button" id="close-edit-modal">Cancel</button>
@@ -113,8 +131,10 @@ async function renderFaculty(container) {
         e.preventDefault();
         const fd = new FormData(e.target);
         const data = Object.fromEntries(fd);
-        data.duty_count = parseInt(data.duty_count, 10) || 0;
-        data.serial_no  = data.serial_no !== '' ? parseInt(data.serial_no, 10) || null : null;
+        data.duty_count     = parseInt(data.duty_count, 10) || 0;
+        data.sat_duty_count = parseInt(data.sat_duty_count, 10) || 0;
+        data.sun_duty_count = parseInt(data.sun_duty_count, 10) || 0;
+        data.serial_no      = data.serial_no !== '' ? parseInt(data.serial_no, 10) || null : null;
         if (!data.shortcuts) delete data.shortcuts;
         try {
             await api.post('/faculty', data);
@@ -147,6 +167,8 @@ async function renderFaculty(container) {
             document.getElementById('edit-contact').value = f.contact || f.phone || '';
             document.getElementById('edit-room-no').value = f.room_no || '';
             document.getElementById('edit-duty-count').value = f.duty_count || 0;
+            document.getElementById('edit-sat-duty-count').value = f.sat_duty_count || 0;
+            document.getElementById('edit-sun-duty-count').value = f.sun_duty_count || 0;
 
             editModal.classList.remove('hidden');
         });
@@ -157,14 +179,16 @@ async function renderFaculty(container) {
         const id = document.getElementById('edit-faculty-id').value;
         const snoVal = document.getElementById('edit-serial-no').value.trim();
         const payload = {
-            serial_no:   snoVal !== '' ? parseInt(snoVal, 10) : null,
-            name:        document.getElementById('edit-name').value.trim(),
-            designation: document.getElementById('edit-designation').value,
-            department:  document.getElementById('edit-department').value.trim() || null,
-            shortcuts:   document.getElementById('edit-shortcuts').value.trim() || null,
-            contact:     document.getElementById('edit-contact').value.trim() || null,
-            room_no:     document.getElementById('edit-room-no').value.trim() || null,
-            duty_count:  parseInt(document.getElementById('edit-duty-count').value, 10) || 0,
+            serial_no:      snoVal !== '' ? parseInt(snoVal, 10) : null,
+            name:           document.getElementById('edit-name').value.trim(),
+            designation:    document.getElementById('edit-designation').value,
+            department:     document.getElementById('edit-department').value.trim() || null,
+            shortcuts:      document.getElementById('edit-shortcuts').value.trim() || null,
+            contact:        document.getElementById('edit-contact').value.trim() || null,
+            room_no:        document.getElementById('edit-room-no').value.trim() || null,
+            duty_count:     parseInt(document.getElementById('edit-duty-count').value, 10) || 0,
+            sat_duty_count: parseInt(document.getElementById('edit-sat-duty-count').value, 10) || 0,
+            sun_duty_count: parseInt(document.getElementById('edit-sun-duty-count').value, 10) || 0,
         };
 
         try {
@@ -238,7 +262,31 @@ async function renderFaculty(container) {
         });
     });
 
-    // Enter key on S.No / duty-count inputs
+    // ── Weekend duty count save (SA / SU) ─────────────────────────────
+    container.querySelectorAll('button[data-save-weekend]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.saveWeekend;
+            const satInp = container.querySelector(`input[data-sat="${id}"]`);
+            const sunInp = container.querySelector(`input[data-sun="${id}"]`);
+            const satVal = parseInt(satInp.value, 10);
+            const sunVal = parseInt(sunInp.value, 10);
+            if (isNaN(satVal) || satVal < 0 || isNaN(sunVal) || sunVal < 0) {
+                showToast('Enter valid non-negative numbers for SA and SU', true);
+                return;
+            }
+            btn.textContent = '…'; btn.disabled = true;
+            try {
+                await api.patch(`/faculty/${id}/weekend-duty-count`, { sat_duty_count: satVal, sun_duty_count: sunVal });
+                showToast('SA & SU counts saved');
+                renderFaculty(container);
+            } catch (err) {
+                showToast(err.message, true);
+                btn.textContent = '✓'; btn.disabled = false;
+            }
+        });
+    });
+
+    // Enter key on S.No / duty-count / SA / SU inputs
     container.querySelectorAll('input[data-sno]').forEach((inp) => {
         inp.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); container.querySelector(`button[data-save-sno="${inp.dataset.sno}"]`).click(); }
@@ -247,6 +295,15 @@ async function renderFaculty(container) {
     container.querySelectorAll('input[data-dc]').forEach((inp) => {
         inp.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); container.querySelector(`button[data-save-dc="${inp.dataset.dc}"]`).click(); }
+        });
+    });
+    container.querySelectorAll('input[data-sat], input[data-sun]').forEach((inp) => {
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const id = inp.dataset.sat || inp.dataset.sun;
+                container.querySelector(`button[data-save-weekend="${id}"]`).click();
+            }
         });
     });
 }
@@ -261,9 +318,9 @@ function facultyRow(f) {
                 <div style="display:flex;align-items:center;gap:5px;">
                     ${snoDisplay}
                     <input data-sno="${f.id}" type="number" min="1" value="${f.serial_no != null ? f.serial_no : ''}"
-                        placeholder="—" class="input" style="width:58px;padding:3px 6px;height:28px;font-size:13px;">
+                        placeholder="—" class="input" style="width:54px;padding:3px 5px;height:28px;font-size:13px;">
                     <button data-save-sno="${f.id}" class="btn btn-sm btn-primary"
-                        style="height:28px;padding:3px 8px;font-size:12px;" title="Save S.No">✓</button>
+                        style="height:28px;padding:3px 7px;font-size:12px;" title="Save S.No">✓</button>
                 </div>
             </td>
             <td><strong>${escapeHtml(f.name)}</strong></td>
@@ -273,11 +330,23 @@ function facultyRow(f) {
             <td style="font-size:12px;color:var(--gray-700);">${escapeHtml(f.contact || '—')}</td>
             <td style="font-size:12px;color:var(--gray-700);">${escapeHtml(f.room_no || '—')}</td>
             <td>
-                <div style="display:flex;align-items:center;gap:5px;">
+                <div style="display:flex;align-items:center;gap:4px;">
                     <input data-dc="${f.id}" type="number" min="0" value="${f.duty_count}" class="input"
-                        style="width:58px;padding:3px 6px;height:28px;font-size:13px;">
+                        style="width:52px;padding:3px 5px;height:28px;font-size:13px;">
                     <button data-save-dc="${f.id}" class="btn btn-sm btn-primary"
-                        style="height:28px;padding:3px 8px;font-size:12px;" title="Save duty count">✓</button>
+                        style="height:28px;padding:3px 7px;font-size:12px;" title="Save duty count">✓</button>
+                </div>
+            </td>
+            <td>
+                <input data-sat="${f.id}" type="number" min="0" value="${f.sat_duty_count != null ? f.sat_duty_count : 0}" class="input"
+                    style="width:50px;padding:3px 5px;height:28px;font-size:13px;">
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <input data-sun="${f.id}" type="number" min="0" value="${f.sun_duty_count != null ? f.sun_duty_count : 0}" class="input"
+                        style="width:50px;padding:3px 5px;height:28px;font-size:13px;">
+                    <button data-save-weekend="${f.id}" class="btn btn-sm btn-primary"
+                        style="height:28px;padding:3px 7px;font-size:12px;" title="Save SA & SU counts">✓</button>
                 </div>
             </td>
             <td>${f.is_active

@@ -220,7 +220,7 @@ async function buildSheetData(examName, yearSem, userId, course, startDate, endD
     }
 
     const { rows: faculty } = await db.query(
-        `SELECT id, name, serial_no, shortcuts, department, duty_count, is_active, phone, contact, room_no
+        `SELECT id, name, serial_no, shortcuts, department, duty_count, sat_duty_count, sun_duty_count, is_active, phone, contact, room_no
          FROM faculty WHERE user_id = $1 ORDER BY serial_no ASC NULLS LAST, name`,
         [userId]
     );
@@ -238,21 +238,8 @@ async function buildSheetData(examName, yearSem, userId, course, startDate, endD
         assignMap.get(d.faculty_id).add(d.exam_session_id);
     }
 
-    const { rows: wkendRows } = await db.query(
-        `SELECT sd.faculty_id,
-            SUM(CASE WHEN EXTRACT(DOW FROM es.exam_date::date) = 6 THEN 1 ELSE 0 END) AS sat,
-            SUM(CASE WHEN EXTRACT(DOW FROM es.exam_date::date) = 0 THEN 1 ELSE 0 END) AS sun
-         FROM session_duty sd JOIN exam_sessions es ON es.id = sd.exam_session_id
-         WHERE es.user_id = $1
-         GROUP BY sd.faculty_id`,
-        [userId]
-    );
-    const wkendMap = new Map();
-    for (const r of wkendRows) wkendMap.set(r.faculty_id, { sat: Number(r.sat), sun: Number(r.sun) });
-
     const facultyRows = faculty.map(f => {
         const assigned = assignMap.get(f.id) || new Set();
-        const wk = wkendMap.get(f.id) || { sat: 0, sun: 0 };
         const cells = sessionCols.map(sc =>
             assigned.has(sc.sessionId) ? (f.shortcuts || '\u2713') : null
         );
@@ -262,7 +249,8 @@ async function buildSheetData(examName, yearSem, userId, course, startDate, endD
             shortcuts: f.shortcuts || '', department: f.department || '',
             totalDuties: sheetDutyCount,
             dutyCount: f.duty_count != null ? Number(f.duty_count) : 0,
-            satDuties: wk.sat, sunDuties: wk.sun,
+            satDuties: f.sat_duty_count != null ? Number(f.sat_duty_count) : 0,
+            sunDuties: f.sun_duty_count != null ? Number(f.sun_duty_count) : 0,
             isActive: f.is_active,
             contact: f.contact || f.phone || '',
             roomNo: f.room_no || '',

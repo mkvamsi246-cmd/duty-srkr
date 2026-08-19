@@ -107,6 +107,8 @@ async function startServer() {
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS shortcuts VARCHAR(200)');
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS contact VARCHAR(50)');
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS room_no VARCHAR(50)');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS sat_duty_count INTEGER NOT NULL DEFAULT 0');
+        await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS sun_duty_count INTEGER NOT NULL DEFAULT 0');
         await db.query('ALTER TABLE faculty ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE');
         await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS course VARCHAR(50)');
         await db.query('ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS required_invigilators INTEGER');

@@ -17,14 +17,16 @@ router.get('/', async (req, res) => {
 
 // Create faculty
 router.post('/', async (req, res) => {
-    const { name, designation, department, email, phone, contact, room_no, duty_count, serial_no, shortcuts } = req.body;
+    const { name, designation, department, email, phone, contact, room_no, duty_count, sat_duty_count, sun_duty_count, serial_no, shortcuts } = req.body;
     if (!name || !designation) return res.status(400).json({ error: 'name and designation are required' });
     try {
         const { rows } = await db.query(
-            `INSERT INTO faculty (user_id, name, designation, department, email, phone, contact, room_no, duty_count, serial_no, shortcuts)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+            `INSERT INTO faculty (user_id, name, designation, department, email, phone, contact, room_no, duty_count, sat_duty_count, sun_duty_count, serial_no, shortcuts)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
             [req.userId, name, designation, department || null, email || null, phone || null, contact || phone || null, room_no || null,
              parseInt(duty_count, 10) || 0,
+             parseInt(sat_duty_count, 10) || 0,
+             parseInt(sun_duty_count, 10) || 0,
              serial_no !== undefined && serial_no !== null && serial_no !== '' ? parseInt(serial_no, 10) || null : null,
              shortcuts || null]
         );
@@ -36,26 +38,30 @@ router.post('/', async (req, res) => {
 
 // Update faculty
 router.put('/:id', async (req, res) => {
-    const { name, designation, department, email, phone, contact, room_no, is_active, duty_count, priority, serial_no, shortcuts } = req.body;
+    const { name, designation, department, email, phone, contact, room_no, is_active, duty_count, sat_duty_count, sun_duty_count, priority, serial_no, shortcuts } = req.body;
     const hasSerialNo = Object.prototype.hasOwnProperty.call(req.body, 'serial_no');
     try {
         const { rows } = await db.query(
             `UPDATE faculty SET
-                name        = COALESCE($1, name),
-                designation = COALESCE($2, designation),
-                department  = COALESCE($3, department),
-                email       = COALESCE($4, email),
-                phone       = COALESCE($5, phone),
-                contact     = COALESCE($6, contact),
-                room_no     = COALESCE($7, room_no),
-                is_active   = COALESCE($8, is_active),
-                duty_count  = COALESCE($9, duty_count),
-                priority    = COALESCE($10, priority),
-                serial_no   = CASE WHEN $11 THEN $12 ELSE serial_no END,
-                shortcuts   = COALESCE($13, shortcuts),
-                updated_at  = now()
-             WHERE id = $14 AND user_id = $15 RETURNING *`,
+                name           = COALESCE($1, name),
+                designation    = COALESCE($2, designation),
+                department     = COALESCE($3, department),
+                email          = COALESCE($4, email),
+                phone          = COALESCE($5, phone),
+                contact        = COALESCE($6, contact),
+                room_no        = COALESCE($7, room_no),
+                is_active      = COALESCE($8, is_active),
+                duty_count     = COALESCE($9, duty_count),
+                sat_duty_count = COALESCE($10, sat_duty_count),
+                sun_duty_count = COALESCE($11, sun_duty_count),
+                priority       = COALESCE($12, priority),
+                serial_no      = CASE WHEN $13 THEN $14 ELSE serial_no END,
+                shortcuts      = COALESCE($15, shortcuts),
+                updated_at     = now()
+             WHERE id = $16 AND user_id = $17 RETURNING *`,
             [name, designation, department, email, phone, contact, room_no, is_active, duty_count,
+             sat_duty_count !== undefined ? (parseInt(sat_duty_count, 10) || 0) : null,
+             sun_duty_count !== undefined ? (parseInt(sun_duty_count, 10) || 0) : null,
              priority !== undefined ? parseInt(priority, 10) : null,
              hasSerialNo,
              hasSerialNo ? (serial_no !== null && serial_no !== '' ? parseInt(serial_no, 10) : null) : null,
@@ -90,8 +96,31 @@ router.patch('/:id/duty-count', async (req, res) => {
     if (isNaN(count) || count < 0) return res.status(400).json({ error: 'duty_count must be a non-negative integer' });
     try {
         const { rows } = await db.query(
-            `UPDATE faculty SET duty_count = $1, updated_at = now() WHERE id = $2 RETURNING *`,
-            [count, req.params.id]
+            `UPDATE faculty SET duty_count = $1, updated_at = now() WHERE id = $2 AND user_id = $3 RETURNING *`,
+            [count, req.params.id, req.userId]
+        );
+        if (rows.length === 0) return res.status(404).json({ error: 'Faculty not found' });
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Update Saturday / Sunday duty counts directly
+router.patch('/:id/weekend-duty-count', async (req, res) => {
+    const { sat_duty_count, sun_duty_count } = req.body;
+    const satCount = sat_duty_count !== undefined ? parseInt(sat_duty_count, 10) : null;
+    const sunCount = sun_duty_count !== undefined ? parseInt(sun_duty_count, 10) : null;
+    try {
+        const { rows } = await db.query(
+            `UPDATE faculty SET
+                sat_duty_count = COALESCE($1, sat_duty_count),
+                sun_duty_count = COALESCE($2, sun_duty_count),
+                updated_at = now()
+             WHERE id = $3 AND user_id = $4 RETURNING *`,
+            [satCount !== null && !isNaN(satCount) ? Math.max(0, satCount) : null,
+             sunCount !== null && !isNaN(sunCount) ? Math.max(0, sunCount) : null,
+             req.params.id, req.userId]
         );
         if (rows.length === 0) return res.status(404).json({ error: 'Faculty not found' });
         res.json(rows[0]);

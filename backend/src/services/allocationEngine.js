@@ -116,13 +116,17 @@ async function getAssignedDutyDatesMap(examDate) {
  */
 async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAssignedDatesMap = null) {
     const dayAbbrev       = dayOfWeekAbbrev(examDate);
+    const isWeekend       = (dayAbbrev === 'Sat' || dayAbbrev === 'Sun');
     const relevantPeriods = sessionPeriods[session] || [];
     const examDateStr     = examDate instanceof Date
         ? examDate.toISOString().slice(0, 10)
         : String(examDate).slice(0, 10);
 
     const { rows } = await db.query(
-        `SELECT f.id, f.name, f.designation, f.duty_count, f.serial_no, f.shortcuts,
+        `SELECT f.id, f.name, f.designation, f.duty_count,
+                COALESCE(f.sat_duty_count, 0) AS sat_duty_count,
+                COALESCE(f.sun_duty_count, 0) AS sun_duty_count,
+                f.serial_no, f.shortcuts,
                 COALESCE(cf.conflict_count, 0) AS conflict_count
          FROM faculty f
          LEFT JOIN (
@@ -166,11 +170,11 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAs
         }
     }
 
-    // Layer 3: Constraint tiering (Same-day and Next-day avoidance)
+    // Layer 3: Constraint tiering (Same-day, Next-day, and Weekend avoidance)
     const dbAssignedDatesMap = await getAssignedDutyDatesMap(examDate);
 
-    const tier1 = []; // Fresh: no same-day, no consecutive-day duty
-    const tier2 = []; // Fallback 1: no same-day, but has consecutive-day (D-1 or D+1) duty
+    const tier1 = []; // Fresh: no same-day, no consecutive-day / recent weekend duty
+    const tier2 = []; // Fallback 1: no same-day, but has consecutive-day or recent weekend (within 7 days) duty
     const tier3 = []; // Fallback 2: has same-day duty
 
     for (const f of eligible) {
@@ -184,6 +188,7 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAs
 
         let hasSameDay = false;
         let hasConsecutiveDay = false;
+        let hasRecentWeekend = false;
 
         for (const assignedDateStr of allAssignedDates) {
             const diffDays = getCalendarDayDiff(examDateStr, assignedDateStr);
@@ -192,15 +197,38 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAs
             } else if (diffDays === 1) {
                 hasConsecutiveDay = true;
             }
+
+            if (isWeekend && diffDays > 0 && diffDays <= 7) {
+                hasRecentWeekend = true;
+            }
         }
 
         if (hasSameDay) {
             tier3.push(f);
-        } else if (hasConsecutiveDay) {
+        } else if (hasConsecutiveDay || (isWeekend && hasRecentWeekend)) {
             tier2.push(f);
         } else {
             tier1.push(f);
         }
+    }
+
+    // If session is on a weekend (Sat/Sun), sort each tier by weekend duty count ASC for round-robin weekend fairness
+    if (isWeekend) {
+        const sortWeekendTier = (arr) => {
+            arr.sort((a, b) => {
+                const wA = (Number(a.sat_duty_count) || 0) + (Number(a.sun_duty_count) || 0);
+                const wB = (Number(b.sat_duty_count) || 0) + (Number(b.sun_duty_count) || 0);
+                if (wA !== wB) return wA - wB; // Prioritize faculty with fewer weekend duties first
+                const sA = a.serial_no != null ? Number(a.serial_no) : -1;
+                const sB = b.serial_no != null ? Number(b.serial_no) : -1;
+                if (sA !== sB) return sB - sA; // serial_no DESC
+                if (a.duty_count !== b.duty_count) return a.duty_count - b.duty_count;
+                return a.name.localeCompare(b.name);
+            });
+        };
+        sortWeekendTier(tier1);
+        sortWeekendTier(tier2);
+        sortWeekendTier(tier3);
     }
 
     return [...tier1, ...tier2, ...tier3];
