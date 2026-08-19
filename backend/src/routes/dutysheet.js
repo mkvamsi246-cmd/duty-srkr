@@ -261,6 +261,7 @@ async function buildSheetData(examName, yearSem, userId, course, startDate, endD
             facultyId: f.id, serialNo: f.serial_no, name: f.name,
             shortcuts: f.shortcuts || '', department: f.department || '',
             totalDuties: sheetDutyCount,
+            dutyCount: f.duty_count != null ? Number(f.duty_count) : 0,
             satDuties: wk.sat, sunDuties: wk.sun,
             isActive: f.is_active,
             contact: f.contact || f.phone || '',
@@ -424,9 +425,9 @@ router.get('/export', async (req, res) => {
             // Contact
             setCell(row.getCell(contactCol), fr.contact, dataFont, cen, isInactive ? orangeRowFill : rowBg, border);
 
-            // TC (Total Count formula)
+            // TC (Total Count - from faculty list duty count)
             const dc = row.getCell(tcCol);
-            dc.value = { formula: `COUNTA(${fc.address}:${lc.address})` };
+            dc.value = fr.dutyCount;
             dc.font = blackBoldFont; dc.alignment = cen; dc.border = border;
             if (isInactive) dc.fill = orangeRowFill; else if (rowBg) dc.fill = rowBg;
 

@@ -183,7 +183,7 @@ async function renderDutySheet(container) {
                     <td style="text-align:center;font-weight:700;font-size:12px;background:${bg};color:${textColor};border:1px solid #cbd5e1;">${fr.totalDuties}</td>
                     <td style="text-align:center;font-size:11px;color:${isInactive ? '#000000' : '#3730a3'};font-weight:700;border:1px solid #cbd5e1;">${escapeHtml(fr.shortcuts)}</td>
                     <td style="text-align:center;font-size:11px;color:${textColor};border:1px solid #cbd5e1;">${escapeHtml(fr.contact || '-')}</td>
-                    <td style="text-align:center;font-size:12px;font-weight:700;border:1px solid #cbd5e1;">${fr.totalDuties}</td>
+                    <td style="text-align:center;font-size:12px;font-weight:700;border:1px solid #cbd5e1;">${fr.dutyCount != null ? fr.dutyCount : (fr.totalDuties || 0)}</td>
                     <td style="text-align:center;font-size:12px;border:1px solid #cbd5e1;">${fr.satDuties}</td>
                     <td style="text-align:center;font-size:12px;border:1px solid #cbd5e1;">${fr.sunDuties}</td>
                     <td style="text-align:center;font-size:11px;color:${textColor};border:1px solid #cbd5e1;">${escapeHtml(fr.roomNo || '-')}</td>

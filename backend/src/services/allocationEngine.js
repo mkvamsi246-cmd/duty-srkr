@@ -56,31 +56,45 @@ async function getStillInClassYears(examDate, session) {
     return VALID_YEAR_SEMS.filter(ys => !examYearSems.has(ys));
 }
 
+function getCalendarDayDiff(dateStr1, dateStr2) {
+    const [y1, m1, d1] = dateStr1.split('-').map(Number);
+    const [y2, m2, d2] = dateStr2.split('-').map(Number);
+    const utc1 = Date.UTC(y1, m1 - 1, d1);
+    const utc2 = Date.UTC(y2, m2 - 1, d2);
+    return Math.abs(Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24)));
+}
+
 /**
- * Returns faculty IDs that already have a session duty on the day immediately
- * before examDate. These faculty are moved to the back of the pool so they
- * are only used when no one else is available (consecutive-day rule).
+ * Returns a map of facultyId -> Set of assigned date strings (YYYY-MM-DD)
+ * for dates around examDate (within +/- 3 days).
  */
-async function getPrevDayAssignedIds(examDate) {
+async function getAssignedDutyDatesMap(examDate) {
     const s = examDate instanceof Date
         ? examDate.toISOString().slice(0, 10)
         : String(examDate).slice(0, 10);
     const { rows } = await db.query(
-        `SELECT DISTINCT faculty_id FROM (
-             SELECT sd.faculty_id
-             FROM session_duty sd
-             JOIN exam_sessions es ON es.id = sd.exam_session_id
-             WHERE es.exam_date < $1::date AND es.exam_date >= ($1::date - INTERVAL '3 days')
-             UNION
-             SELECT idu.faculty_id
-             FROM invigilation_duty idu
-             JOIN exam_room_allocation era ON era.id = idu.exam_room_allocation_id
-             JOIN exam_sessions es ON es.id = era.exam_session_id
-             WHERE es.exam_date < $1::date AND es.exam_date >= ($1::date - INTERVAL '3 days')
-         ) prev_duties`,
+        `SELECT sd.faculty_id, es.exam_date::text AS duty_date
+         FROM session_duty sd
+         JOIN exam_sessions es ON es.id = sd.exam_session_id
+         WHERE es.exam_date >= ($1::date - INTERVAL '3 days')
+           AND es.exam_date <= ($1::date + INTERVAL '3 days')
+         UNION
+         SELECT idu.faculty_id, es.exam_date::text AS duty_date
+         FROM invigilation_duty idu
+         JOIN exam_room_allocation era ON era.id = idu.exam_room_allocation_id
+         JOIN exam_sessions es ON es.id = era.exam_session_id
+         WHERE es.exam_date >= ($1::date - INTERVAL '3 days')
+           AND es.exam_date <= ($1::date + INTERVAL '3 days')`,
         [s]
     );
-    return new Set(rows.map(r => r.faculty_id));
+    const map = new Map();
+    for (const r of rows) {
+        const fid = r.faculty_id;
+        const dStr = String(r.duty_date).slice(0, 10);
+        if (!map.has(fid)) map.set(fid, new Set());
+        map.get(fid).add(dStr);
+    }
+    return map;
 }
 
 /**
@@ -90,16 +104,22 @@ async function getPrevDayAssignedIds(examDate) {
  *   1. SQL: inactive / unavailable / direct timetable conflict
  *   2. JS:  "still-in-class year" conflict
  *
- * Ordering:
- *   - Primary: duty_count ASC (lowest duties assigned first for fair distribution)
- *   - Priority: priority ASC (Prof=1, Assoc=2, Asst=3)
- *   - Serial No: serial_no ASC NULLS LAST
+ * Tiered Ordering:
+ *   - Tier 1: Fresh faculty (NO duty on same date, NO duty on consecutive date)
+ *   - Tier 2: Consecutive-day fallback (NO duty on same date, BUT has duty on D-1 or D+1)
+ *   - Tier 3: Same-day fallback (ALREADY has duty on same date)
+ *
+ * Within each tier:
+ *   - Primary: serial_no DESC NULLS LAST
+ *   - Secondary: duty_count ASC (lowest total duties first)
  *   - Tiebreak: name ASC
- *   - Consecutive-day rule: Move faculty with duty on previous exam date to back of pool (used only if more are needed)
  */
 async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAssignedDatesMap = null) {
     const dayAbbrev       = dayOfWeekAbbrev(examDate);
     const relevantPeriods = sessionPeriods[session] || [];
+    const examDateStr     = examDate instanceof Date
+        ? examDate.toISOString().slice(0, 10)
+        : String(examDate).slice(0, 10);
 
     const { rows } = await db.query(
         `SELECT f.id, f.name, f.designation, f.duty_count, f.serial_no, f.shortcuts,
@@ -116,7 +136,7 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAs
                WHERE date = $3 AND (session = $4 OR session = 'ALL')
            )
          ORDER BY f.serial_no DESC NULLS LAST, f.duty_count ASC, f.name ASC`,
-        [dayAbbrev, relevantPeriods, examDate, session]
+        [dayAbbrev, relevantPeriods, examDateStr, session]
     );
 
     // Layer 1: hard exclude — class during exam periods
@@ -146,32 +166,44 @@ async function getEligibleFacultyPool(examDate, session, sessionPeriods, batchAs
         }
     }
 
-    // Layer 3: consecutive-day rule — move faculty with duty on previous/consecutive exam date to back of pool
-    const prevDayIds = await getPrevDayAssignedIds(examDate);
-    const examTimeMs = new Date(examDate).getTime();
+    // Layer 3: Constraint tiering (Same-day and Next-day avoidance)
+    const dbAssignedDatesMap = await getAssignedDutyDatesMap(examDate);
 
-    const noPrevDuty = [];
-    const withPrevDuty = [];
+    const tier1 = []; // Fresh: no same-day, no consecutive-day duty
+    const tier2 = []; // Fallback 1: no same-day, but has consecutive-day (D-1 or D+1) duty
+    const tier3 = []; // Fallback 2: has same-day duty
 
     for (const f of eligible) {
-        let hasConsecutive = prevDayIds.has(f.id);
-        if (!hasConsecutive && batchAssignedDatesMap && batchAssignedDatesMap.has(f.id)) {
-            for (const assignedDateStr of batchAssignedDatesMap.get(f.id)) {
-                const diffDays = Math.abs((examTimeMs - new Date(assignedDateStr).getTime()) / (1000 * 3600 * 24));
-                if (diffDays <= 1) {
-                    hasConsecutive = true;
-                    break;
-                }
+        const allAssignedDates = new Set();
+        if (dbAssignedDatesMap.has(f.id)) {
+            for (const d of dbAssignedDatesMap.get(f.id)) allAssignedDates.add(d);
+        }
+        if (batchAssignedDatesMap && batchAssignedDatesMap.has(f.id)) {
+            for (const d of batchAssignedDatesMap.get(f.id)) allAssignedDates.add(d);
+        }
+
+        let hasSameDay = false;
+        let hasConsecutiveDay = false;
+
+        for (const assignedDateStr of allAssignedDates) {
+            const diffDays = getCalendarDayDiff(examDateStr, assignedDateStr);
+            if (diffDays === 0) {
+                hasSameDay = true;
+            } else if (diffDays === 1) {
+                hasConsecutiveDay = true;
             }
         }
-        if (hasConsecutive) {
-            withPrevDuty.push(f);
+
+        if (hasSameDay) {
+            tier3.push(f);
+        } else if (hasConsecutiveDay) {
+            tier2.push(f);
         } else {
-            noPrevDuty.push(f);
+            tier1.push(f);
         }
     }
 
-    return [...noPrevDuty, ...withPrevDuty];
+    return [...tier1, ...tier2, ...tier3];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
